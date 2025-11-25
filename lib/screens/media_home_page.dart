@@ -13,6 +13,8 @@ import '../widgets/video_player_widget.dart';
 import 'audio_edit_screen.dart';
 import '../services/user_profile_service.dart';
 import 'package:file_picker/file_picker.dart';
+import '../services/equalizer_service.dart';
+import 'equalizer_screen.dart';
 
 class MediaHomePage extends StatefulWidget {
   const MediaHomePage({super.key});
@@ -62,156 +64,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
     _loadPlaylists();
     _loadLikedSongs();
     _searchController.addListener(_filterFiles);
-    
-    // Listen to player completion for repeat functionality
-    _mediaService.audioPlayer.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        _handleAudioCompletion();
-      }
-    });
-  }
-
-  Future<void> _loadPlaylists() async {
-    final playlists = await _playlistService.getPlaylists();
-    setState(() {
-      _playlists = playlists;
-    });
-  }
-
-  Future<void> _loadLikedSongs() async {
-    final likedSongs = await _likedSongsService.getLikedSongs();
-    setState(() {
-      _likedSongs = likedSongs;
-    });
-  }
-
-  Future<void> _toggleLikedSong(MediaFile file) async {
-    await _likedSongsService.toggleLikedSong(file.path);
-    await _loadLikedSongs();
-    
-    // Show feedback
-    final isNowLiked = _likedSongs.contains(file.path);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isNowLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs'),
-          backgroundColor: const Color(0xFF8B5CF6),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
-  }
-
-  Future<void> _scanForFiles({bool forceRefresh = false}) async {
-    // Check if we have cached files and not forcing refresh
-    if (!forceRefresh && _mediaService.hasCachedFiles()) {
-      final cachedFiles = _mediaService.getCachedFiles()!;
-      setState(() {
-        _mediaFiles = cachedFiles;
-        _filteredFiles = cachedFiles;
-      });
-      return;
-    }
-
-    // Only show scanning UI on initial load, not on force refresh
-    if (!forceRefresh) {
-      setState(() {
-        _isScanning = true;
-        _error = null;
-      });
-    }
-
-    try {
-      final files = await _mediaService.scanForMediaFiles(forceRefresh: forceRefresh);
-      if (!mounted) return;
-      
-      // Separate audio and video files
-      final audioFiles = files.where((file) => !file.isVideo).toList();
-      final videoFiles = files.where((file) => file.isVideo).toList();
-      
-      setState(() {
-        _mediaFiles = files;
-        _audioFiles = audioFiles;
-        _videoFiles = videoFiles;
-        _filteredFiles = _currentView == 'videos' ? videoFiles : audioFiles;
-        _isScanning = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Failed to scan for media files: $e';
-        _isScanning = false;
-      });
-    }
-  }
-
-  void _filterFiles() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      final sourceFiles = _currentView == 'videos' ? _videoFiles : _audioFiles;
-      if (query.isEmpty) {
-        _filteredFiles = sourceFiles;
-      } else {
-        _filteredFiles = sourceFiles
-            .where((file) => file.name.toLowerCase().contains(query))
-            .toList();
-      }
-    });
-  }
-
-  Future<void> _pickFile() async {
-    try {
-      final result = await _mediaService.pickFile();
-      if (result == null) {
-        if (!mounted) return;
-        setState(() => _loading = false);
-        return;
-      }
-
-      await _loadMedia(
-        path: result['path'],
-        contentUri: result['contentUri'],
-        isVideo: result['isVideo'],
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Failed to pick file: $e';
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _loadMedia({
-    String? path,
-    Uri? contentUri,
-    required bool isVideo,
-  }) async {
-    setState(() {
-      _filePath = path ?? contentUri?.toString();
-      _isVideo = isVideo;
-      _loading = true;
-      _error = null;
-      _showList = false;
-    });
-
-    try {
-      await _mediaService.loadMedia(
-        path: path,
-        contentUri: contentUri,
-        isVideo: isVideo,
-      );
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Failed to load media: $e';
-        _loading = false;
-      });
-    }
+    ;
   }
 
   Future<void> _playMediaFile(MediaFile file) async {
@@ -445,6 +298,103 @@ class _MediaHomePageState extends State<MediaHomePage> {
     });
   }
 
+  Future<void> _loadPlaylists() async {
+    try {
+      final playlists = await _playlistService.getPlaylists();
+      if (!mounted) return;
+      setState(() {
+        _playlists = playlists;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadLikedSongs() async {
+    try {
+      final liked = await _likedSongsService.getLikedSongs();
+      if (!mounted) return;
+      setState(() {
+        _likedSongs = liked;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _scanForFiles({bool forceRefresh = false}) async {
+    if (!forceRefresh && _mediaService.hasCachedFiles()) {
+      final cachedFiles = _mediaService.getCachedFiles()!;
+      setState(() {
+        _mediaFiles = cachedFiles;
+        _filteredFiles = cachedFiles;
+      });
+      return;
+    }
+
+    if (!forceRefresh) {
+      setState(() {
+        _isScanning = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final files = await _mediaService.scanForMediaFiles(forceRefresh: forceRefresh);
+      if (!mounted) return;
+      final audioFiles = files.where((f) => !f.isVideo).toList();
+      final videoFiles = files.where((f) => f.isVideo).toList();
+      setState(() {
+        _mediaFiles = files;
+        _audioFiles = audioFiles;
+        _videoFiles = videoFiles;
+        _filteredFiles = _currentView == 'videos' ? videoFiles : audioFiles;
+        _isScanning = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to scan for media files: $e';
+        _isScanning = false;
+      });
+    }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final result = await _mediaService.pickFile();
+      if (result == null) return;
+      await _mediaService.loadMedia(
+        path: result['path'] as String?,
+        contentUri: result['contentUri'] as Uri?,
+        isVideo: result['isVideo'] as bool,
+      );
+      setState(() {
+        _showList = false;
+        _filePath = result['path'] as String?;
+        _isVideo = result['isVideo'] as bool;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to pick file: $e';
+      });
+    }
+  }
+
+  Future<void> _toggleLikedSong(MediaFile file) async {
+    try {
+      await _likedSongsService.toggleLikedSong(file.path);
+      await _loadLikedSongs();
+      final isNowLiked = _likedSongs.contains(file.path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isNowLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs'),
+            backgroundColor: const Color(0xFF8B5CF6),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
   Future<void> _pickProfileImage() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -475,6 +425,21 @@ class _MediaHomePageState extends State<MediaHomePage> {
         SnackBar(content: Text('Failed to pick image: $e')),
       );
     }
+  }
+
+  void _filterFiles() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      final sourceFiles = _currentView == 'videos' ? _videoFiles : _audioFiles;
+      if (query.isEmpty) {
+        _filteredFiles = sourceFiles;
+      } else {
+        _filteredFiles = sourceFiles.where((file) {
+          final name = (file.name).toLowerCase();
+          return name.contains(query);
+        }).toList();
+      }
+    });
   }
 
   Future<void> _removeProfileImage() async {
@@ -1251,77 +1216,106 @@ class _MediaHomePageState extends State<MediaHomePage> {
               },
             )
           else
-            Row(
+            // Home: show title only (no left menu)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.menu, color: Colors.white, size: 26),
-                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _showList ? 'Home' : 'Now Playing',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                Text(
+                  _showList ? 'Home' : 'Now Playing',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
           Row(
             children: [
+              // If home list is visible show only profile avatar
               if (_showList)
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
-                  onPressed: () => _scanForFiles(forceRefresh: true),
-                ),
-              // Right-side actions: profile on Home list; three-dot menu on audio player
-              if (_showList)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.white24,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: _profileImagePath != null
-                          ? Image.file(
-                              File(_profileImagePath!),
-                              fit: BoxFit.cover,
-                              width: 36,
-                              height: 36,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(Icons.person, color: Colors.white);
-                              },
-                            )
-                          : const Icon(Icons.person, color: Colors.white),
+                GestureDetector(
+                  onTap: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: const Color(0xFF1E1E2E),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                      ),
+                      builder: (context) {
+                        return SafeArea(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.photo_camera, color: Color(0xFF8B5CF6)),
+                                title: const Text('Change Profile Picture', style: TextStyle(color: Colors.white)),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  await _pickProfileImage();
+                                },
+                              ),
+                              if (_profileImagePath != null)
+                                ListTile(
+                                  leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                  title: const Text('Remove Profile Picture', style: TextStyle(color: Colors.white)),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    await _removeProfileImage();
+                                  },
+                                ),
+                              ListTile(
+                                leading: Icon(Icons.info_outline, color: Colors.white.withOpacity(0.7)),
+                                title: const Text('About', style: TextStyle(color: Colors.white)),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  showAboutDialog(
+                                    context: context,
+                                    applicationName: 'Media Player',
+                                    applicationVersion: '0.1.0',
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.white24,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: _profileImagePath != null
+                            ? Image.file(
+                                File(_profileImagePath!),
+                                fit: BoxFit.cover,
+                                width: 36,
+                                height: 36,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Icon(Icons.person, color: Colors.white);
+                                },
+                              )
+                            : const Icon(Icons.person, color: Colors.white),
+                      ),
                     ),
                   ),
                 )
-              else if (!_isVideo)
+              else
+                // When in player view show a three-dot menu for Edit Audio Info
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, color: Colors.white),
                   color: const Color(0xFF1E1E2E),
-                  onSelected: (value) {
+                  onSelected: (value) async {
                     if (value == 'edit') {
                       _showAudioEditDialog();
+                    } else if (value == 'equalizer') {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const EqualizerScreen()));
                     } else if (value == 'settings') {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          backgroundColor: const Color(0xFF1E1E2E),
-                          title: const Text('Settings', style: TextStyle(color: Colors.white)),
-                          content: const Text('Settings screen placeholder', style: TextStyle(color: Colors.white70)),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white54))),
-                          ],
-                        ),
-                      );
+                      // TODO: open settings
                     } else if (value == 'about') {
                       showAboutDialog(
                         context: context,
@@ -1332,40 +1326,12 @@ class _MediaHomePageState extends State<MediaHomePage> {
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit, size: 18, color: Colors.white70),
-                          SizedBox(width: 12),
-                          Text('Edit Audio Info', style: TextStyle(color: Colors.white)),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'settings',
-                      child: Row(
-                        children: [
-                          Icon(Icons.settings, size: 18, color: Colors.white70),
-                          SizedBox(width: 12),
-                          Text('Settings', style: TextStyle(color: Colors.white)),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'about',
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline, size: 18, color: Colors.white70),
-                          SizedBox(width: 12),
-                          Text('About', style: TextStyle(color: Colors.white)),
-                        ],
-                      ),
-                    ),
+                    const PopupMenuItem(value: 'edit', child: Text('Edit Audio Info', style: TextStyle(color: Colors.white))),
+                    const PopupMenuItem(value: 'equalizer', child: Text('Equalizer', style: TextStyle(color: Colors.white))),
+                    const PopupMenuItem(value: 'settings', child: Text('Settings', style: TextStyle(color: Colors.white))),
+                    const PopupMenuItem(value: 'about', child: Text('About', style: TextStyle(color: Colors.white))),
                   ],
-                )
-              else
-                const SizedBox(width: 48),
+                ),
             ],
           ),
         ],

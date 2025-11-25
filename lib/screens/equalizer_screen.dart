@@ -1,0 +1,185 @@
+import 'package:flutter/material.dart';
+import '../services/equalizer_service.dart';
+
+class EqualizerScreen extends StatefulWidget {
+  const EqualizerScreen({super.key});
+
+  @override
+  State<EqualizerScreen> createState() => _EqualizerScreenState();
+}
+
+class _EqualizerScreenState extends State<EqualizerScreen> {
+  late EqualizerService _service;
+  late EqualizerSettings _settings;
+  bool _loading = true;
+
+  static const List<String> _freqLabels5 = ['60Hz', '230Hz', '910Hz', '3.6kHz', '14kHz'];
+  static const List<String> _freqLabels10 = ['31Hz','62Hz','125Hz','250Hz','500Hz','1kHz','2kHz','4kHz','8kHz','16kHz'];
+
+  @override
+  void initState() {
+    super.initState();
+    EqualizerService.getInstance().then((s) {
+      _service = s;
+      setState(() {
+        _settings = _service.getSettings();
+        _loading = false;
+      });
+    });
+  }
+
+  void _setBand(int index, double value) {
+    final bands = List<double>.from(_settings.bands);
+    bands[index] = value;
+    setState(() {
+      _settings = EqualizerSettings(
+        bandCount: _settings.bandCount,
+        bands: bands,
+        bassBoost: _settings.bassBoost,
+        virtualizer: _settings.virtualizer,
+        enabled: _settings.enabled,
+      );
+    });
+  }
+
+  void _save() async {
+    await _service.setSettings(_settings);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    final labels = _settings.bandCount == 5 ? _freqLabels5 : _freqLabels10;
+    final bandCount = _settings.bandCount;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Equalizer'),
+        backgroundColor: const Color(0xFF1E1E2E),
+        actions: [
+          TextButton(onPressed: _save, child: const Text('Save', style: TextStyle(color: Color(0xFF8B5CF6))))
+        ],
+      ),
+      backgroundColor: const Color(0xFF12121A),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('Enabled', style: TextStyle(color: Colors.white)),
+                const Spacer(),
+                Switch(
+                  value: _settings.enabled,
+                  onChanged: (v) => setState(() => _settings = EqualizerSettings(
+                    bandCount: _settings.bandCount,
+                    bands: _settings.bands,
+                    bassBoost: _settings.bassBoost,
+                    virtualizer: _settings.virtualizer,
+                    enabled: v,
+                  )),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Bands', style: TextStyle(color: Colors.white)),
+                const Spacer(),
+                ToggleButtons(
+                  isSelected: [ _settings.bandCount == 5, _settings.bandCount == 10 ],
+                  onPressed: (i) {
+                    final newCount = i == 0 ? 5 : 10;
+                    final newBands = List<double>.filled(newCount, 0.0);
+                    for (var j = 0; j < newCount && j < _settings.bands.length; j++) {
+                      newBands[j] = _settings.bands[j];
+                    }
+                    setState(() {
+                      _settings = EqualizerSettings(
+                        bandCount: newCount,
+                        bands: newBands,
+                        bassBoost: _settings.bassBoost,
+                        virtualizer: _settings.virtualizer,
+                        enabled: _settings.enabled,
+                      );
+                    });
+                  },
+                  children: const [Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('5')), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('10'))],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView.builder(
+                itemCount: bandCount,
+                itemBuilder: (context, index) {
+                  final label = index < labels.length ? labels[index] : 'Band ${index+1}';
+                  final value = index < _settings.bands.length ? _settings.bands[index] : 0.0;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(label, style: const TextStyle(color: Colors.white)),
+                            const Spacer(),
+                            Text('${value.toStringAsFixed(1)} dB', style: const TextStyle(color: Colors.white70)),
+                          ],
+                        ),
+                        Slider(
+                          value: value,
+                          min: -12.0,
+                          max: 12.0,
+                          divisions: 48,
+                          label: '${value.toStringAsFixed(1)} dB',
+                          onChanged: (v) => _setBand(index, v),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('Bass Boost', style: TextStyle(color: Colors.white)),
+            Slider(
+              value: _settings.bassBoost,
+              min: 0.0,
+              max: 1.0,
+              divisions: 100,
+              label: '${(_settings.bassBoost * 100).round()}%',
+              onChanged: (v) => setState(() => _settings = EqualizerSettings(
+                bandCount: _settings.bandCount,
+                bands: _settings.bands,
+                bassBoost: v,
+                virtualizer: _settings.virtualizer,
+                enabled: _settings.enabled,
+              )),
+            ),
+            const SizedBox(height: 8),
+            const Text('Virtualizer', style: TextStyle(color: Colors.white)),
+            Slider(
+              value: _settings.virtualizer,
+              min: 0.0,
+              max: 1.0,
+              divisions: 100,
+              label: '${(_settings.virtualizer * 100).round()}%',
+              onChanged: (v) => setState(() => _settings = EqualizerSettings(
+                bandCount: _settings.bandCount,
+                bands: _settings.bands,
+                bassBoost: _settings.bassBoost,
+                virtualizer: v,
+                enabled: _settings.enabled,
+              )),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
