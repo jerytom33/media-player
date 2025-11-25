@@ -11,6 +11,8 @@ import '../models/playlist.dart';
 import '../widgets/audio_player_widget.dart';
 import '../widgets/video_player_widget.dart';
 import 'audio_edit_screen.dart';
+import '../services/user_profile_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class MediaHomePage extends StatefulWidget {
   const MediaHomePage({super.key});
@@ -24,6 +26,8 @@ class _MediaHomePageState extends State<MediaHomePage> {
   late final PlaylistService _playlistService;
   late final LikedSongsService _likedSongsService;
   AudioMetadataService? _metadataService;
+  UserProfileService? _userProfileService;
+  String? _profileImagePath;
   String? _filePath;
   bool _isVideo = false;
   bool _loading = false;
@@ -52,6 +56,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
     _playlistService = PlaylistService();
     _likedSongsService = LikedSongsService();
     _initMetadataService();
+    _initUserProfile();
     _scanForFiles();
     _loadPlaylists();
     _loadLikedSongs();
@@ -430,6 +435,53 @@ class _MediaHomePageState extends State<MediaHomePage> {
 
   Future<void> _initMetadataService() async {
     _metadataService = await AudioMetadataService.getInstance();
+  }
+
+  Future<void> _initUserProfile() async {
+    _userProfileService = await UserProfileService.getInstance();
+    setState(() {
+      _profileImagePath = _userProfileService?.getProfileImagePath();
+    });
+  }
+
+  Future<void> _pickProfileImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.single;
+      final path = picked.path;
+      if (path == null) return;
+      // Save and update UI
+      await _userProfileService?.setProfileImagePath(path);
+      if (!mounted) return;
+      setState(() {
+        _profileImagePath = path;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated'),
+            backgroundColor: Color(0xFF8B5CF6),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: $e')),
+      );
+    }
+  }
+
+  Future<void> _removeProfileImage() async {
+    await _userProfileService?.setProfileImagePath(null);
+    if (!mounted) return;
+    setState(() {
+      _profileImagePath = null;
+    });
   }
 
   void _handleAudioCompletion() {
@@ -1096,61 +1148,89 @@ class _MediaHomePageState extends State<MediaHomePage> {
                   icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
                   onPressed: () => _scanForFiles(forceRefresh: true),
                 ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: Colors.white, size: 24),
-                offset: const Offset(0, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                color: const Color(0xFF1E1E1E),
-                elevation: 8,
-                onSelected: (value) {
-                  if (value == 'edit_audio' && !_isVideo && _currentPlayingIndex >= 0) {
-                    _showAudioEditDialog();
-                  }
+              // Profile button (replaces three-dot menu). Tapping opens profile actions.
+              GestureDetector(
+                onTap: () {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    backgroundColor: const Color(0xFF1E1E2E),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    builder: (context) {
+                      return SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.photo_camera, color: Color(0xFF8B5CF6)),
+                              title: const Text('Change Profile Picture', style: TextStyle(color: Colors.white)),
+                              onTap: () async {
+                                Navigator.pop(context);
+                                await _pickProfileImage();
+                              },
+                            ),
+                            if (_profileImagePath != null)
+                              ListTile(
+                                leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                title: const Text('Remove Profile Picture', style: TextStyle(color: Colors.white)),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  await _removeProfileImage();
+                                },
+                              ),
+                            if (!_isVideo && _currentPlayingIndex >= 0)
+                              ListTile(
+                                leading: const Icon(Icons.edit, color: Color(0xFF8B5CF6)),
+                                title: const Text('Edit Audio Info', style: TextStyle(color: Colors.white)),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _showAudioEditDialog();
+                                },
+                              ),
+                            ListTile(
+                              leading: Icon(Icons.settings, color: Colors.white.withOpacity(0.7)),
+                              title: const Text('Settings', style: TextStyle(color: Colors.white)),
+                              onTap: () {
+                                Navigator.pop(context);
+                                // TODO: open settings
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.info_outline, color: Colors.white.withOpacity(0.7)),
+                              title: const Text('About', style: TextStyle(color: Colors.white)),
+                              onTap: () {
+                                Navigator.pop(context);
+                                // TODO: show about dialog
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
                 },
-                itemBuilder: (context) => [
-                  if (!_isVideo && _currentPlayingIndex >= 0)
-                    PopupMenuItem(
-                      value: 'edit_audio',
-                      child: Row(
-                        children: [
-                          const Icon(Icons.edit, size: 20, color: Color(0xFF8B5CF6)),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Edit Audio Info',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                  PopupMenuItem(
-                    value: 'settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.settings, size: 20, color: Colors.white.withOpacity(0.7)),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Settings',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.white24,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: _profileImagePath != null
+                          ? Image.file(
+                              File(_profileImagePath!),
+                              fit: BoxFit.cover,
+                              width: 36,
+                              height: 36,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(Icons.person, color: Colors.white);
+                              },
+                            )
+                          : const Icon(Icons.person, color: Colors.white),
                     ),
                   ),
-                  PopupMenuItem(
-                    value: 'about',
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 20, color: Colors.white.withOpacity(0.7)),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'About',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
