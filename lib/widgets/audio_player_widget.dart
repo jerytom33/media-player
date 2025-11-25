@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../utils/format_utils.dart';
+import '../services/audio_metadata_service.dart';
 
 class AudioPlayerWidget extends StatefulWidget {
   final AudioPlayer audioPlayer;
@@ -33,6 +35,18 @@ class AudioPlayerWidget extends StatefulWidget {
 
 class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   double _playbackSpeed = 1.0;
+  AudioMetadataService? _metadataService;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMetadataService();
+  }
+
+  Future<void> _loadMetadataService() async {
+    _metadataService = await AudioMetadataService.getInstance();
+    if (mounted) setState(() {});
+  }
 
   void _setPlaybackSpeed(double speed) {
     setState(() => _playbackSpeed = speed);
@@ -59,32 +73,52 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                   children: [
                     const SizedBox(height: 20),
                     // Album art with shadow
-                    Container(
-                      width: 220,
-                      height: 220,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(0xFFEC4899),
-                            const Color(0xFF8B5CF6),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.3),
-                            blurRadius: 40,
-                            offset: const Offset(0, 20),
+                    Builder(
+                      builder: (context) {
+                        final customImagePath = _metadataService?.getCustomImagePath(widget.filePath ?? '');
+                        return Container(
+                          width: 220,
+                          height: 220,
+                          decoration: BoxDecoration(
+                            gradient: customImagePath == null ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                const Color(0xFFEC4899),
+                                const Color(0xFF8B5CF6),
+                              ],
+                            ) : null,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                blurRadius: 40,
+                                offset: const Offset(0, 20),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.music_note_rounded,
-                        size: 120,
-                        color: Colors.white,
-                      ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: customImagePath != null
+                                ? Image.file(
+                                    File(customImagePath),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(
+                                        Icons.music_note_rounded,
+                                        size: 120,
+                                        color: Colors.white,
+                                      );
+                                    },
+                                  )
+                                : const Icon(
+                                    Icons.music_note_rounded,
+                                    size: 120,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        );
+                      }
                     ),
                     const SizedBox(height: 16),
                     // Add to playlist button
@@ -101,7 +135,10 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                     const SizedBox(height: 8),
                     // Song title
                     Text(
-                      FormatUtils.getDisplayName(widget.filePath),
+                      _metadataService?.getDisplayName(
+                        widget.filePath ?? '',
+                        FormatUtils.getDisplayName(widget.filePath),
+                      ) ?? FormatUtils.getDisplayName(widget.filePath),
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -112,10 +149,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    // Artist name placeholder
-                    const Text(
-                      'Unknown Artist',
-                      style: TextStyle(
+                    // Description or Artist name
+                    Text(
+                      _metadataService?.getDescription(widget.filePath ?? '') ?? 'Unknown Artist',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white38,
                       ),

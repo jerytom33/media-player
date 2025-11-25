@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
+import 'dart:io';
 import '../services/media_service.dart';
 import '../services/playlist_service.dart';
 import '../services/liked_songs_service.dart';
+import '../services/audio_metadata_service.dart';
 import '../models/media_file.dart';
 import '../models/playlist.dart';
 import '../widgets/audio_player_widget.dart';
 import '../widgets/video_player_widget.dart';
+import 'audio_edit_screen.dart';
 
 class MediaHomePage extends StatefulWidget {
   const MediaHomePage({super.key});
@@ -20,6 +23,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
   late final MediaService _mediaService;
   late final PlaylistService _playlistService;
   late final LikedSongsService _likedSongsService;
+  AudioMetadataService? _metadataService;
   String? _filePath;
   bool _isVideo = false;
   bool _loading = false;
@@ -47,6 +51,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
     _mediaService = MediaService(AudioPlayer());
     _playlistService = PlaylistService();
     _likedSongsService = LikedSongsService();
+    _initMetadataService();
     _scanForFiles();
     _loadPlaylists();
     _loadLikedSongs();
@@ -252,18 +257,65 @@ class _MediaHomePageState extends State<MediaHomePage> {
     }
   }
 
-  // Methods for mini player - don't change screen
-  Future<void> _playNextInBackground() async {
+  Future<void> _showAudioEditDialog() async {
     final currentList = _currentView == 'videos' ? _videoFiles : _audioFiles;
     final playList = _isShuffleEnabled ? _shuffledMediaFiles : currentList;
+    
+    if (_currentPlayingIndex < 0 || _currentPlayingIndex >= playList.length) {
+      return;
+    }
+
+    final currentFile = playList[_currentPlayingIndex];
+    final metadata = _metadataService?.getAudioMetadata(currentFile.path);
+    
+    final result = await Navigator.push<Map<String, String?>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AudioEditScreen(
+          filePath: currentFile.path,
+          currentName: metadata?.customName ?? currentFile.displayName,
+          currentDescription: metadata?.description,
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      // Save the metadata
+      await _metadataService?.saveAudioMetadata(
+        filePath: currentFile.path,
+        customName: result['name']?.isNotEmpty == true ? result['name'] : null,
+        description: result['description']?.isNotEmpty == true ? result['description'] : null,
+        customImagePath: result['imagePath'],
+      );
+      
+      // Refresh the UI
+      setState(() {});
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Audio info updated'),
+          backgroundColor: Color(0xFF8B5CF6),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  // Methods for mini player - don't change screen
+  Future<void> _playNextInBackground() async {
+    // Always use audio files for mini player navigation
+    final playList = _isShuffleEnabled ? _shuffledMediaFiles : _audioFiles;
     if (_currentPlayingIndex >= 0 && _currentPlayingIndex < playList.length - 1) {
       final nextFile = playList[_currentPlayingIndex + 1];
+      // Only proceed if next file is audio
+      if (nextFile.isVideo) return;
+      
       try {
         setState(() {
           _loading = true;
           _error = null;
           _filePath = nextFile.path;
-          _isVideo = nextFile.isVideo;
+          _isVideo = false; // Always audio in mini player
           _currentPlayingIndex = _currentPlayingIndex + 1;
         });
 
@@ -282,16 +334,19 @@ class _MediaHomePageState extends State<MediaHomePage> {
   }
 
   Future<void> _playPreviousInBackground() async {
-    final currentList = _currentView == 'videos' ? _videoFiles : _audioFiles;
-    final playList = _isShuffleEnabled ? _shuffledMediaFiles : currentList;
+    // Always use audio files for mini player navigation
+    final playList = _isShuffleEnabled ? _shuffledMediaFiles : _audioFiles;
     if (_currentPlayingIndex > 0) {
       final prevFile = playList[_currentPlayingIndex - 1];
+      // Only proceed if previous file is audio
+      if (prevFile.isVideo) return;
+      
       try {
         setState(() {
           _loading = true;
           _error = null;
           _filePath = prevFile.path;
-          _isVideo = prevFile.isVideo;
+          _isVideo = false; // Always audio in mini player
           _currentPlayingIndex = _currentPlayingIndex - 1;
         });
 
@@ -371,6 +426,10 @@ class _MediaHomePageState extends State<MediaHomePage> {
       }
       _mediaService.audioPlayer.setLoopMode(_repeatMode);
     });
+  }
+
+  Future<void> _initMetadataService() async {
+    _metadataService = await AudioMetadataService.getInstance();
   }
 
   void _handleAudioCompletion() {
@@ -714,7 +773,12 @@ class _MediaHomePageState extends State<MediaHomePage> {
               }
             },
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 8,
+                bottom: (!_showList || _currentPlayingIndex < 0 || _isVideo) ? 8 : 100, // Add bottom padding when mini player is visible
+              ),
               itemCount: _currentView == 'playlists' ? _playlists.length : _filteredFiles.length,
               itemBuilder: (context, index) {
                 if (_currentView == 'playlists') {
@@ -734,24 +798,46 @@ class _MediaHomePageState extends State<MediaHomePage> {
                         child: Row(
                           children: [
                             // Rounded thumbnail
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: file.isVideo 
-                                      ? [const Color(0xFF8B5CF6), const Color(0xFF6D28D9)]
-                                      : [const Color(0xFFEC4899), const Color(0xFF8B5CF6)],
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                file.isVideo ? Icons.videocam_rounded : Icons.music_note_rounded,
-                                color: Colors.white,
-                                size: 26,
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final customImagePath = !file.isVideo ? _metadataService?.getCustomImagePath(file.path) : null;
+                                return Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    gradient: customImagePath == null ? LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: file.isVideo 
+                                          ? [const Color(0xFF8B5CF6), const Color(0xFF6D28D9)]
+                                          : [const Color(0xFFEC4899), const Color(0xFF8B5CF6)],
+                                    ) : null,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: customImagePath != null
+                                        ? Image.file(
+                                            File(customImagePath),
+                                            fit: BoxFit.cover,
+                                            width: 56,
+                                            height: 56,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Icon(
+                                                file.isVideo ? Icons.videocam_rounded : Icons.music_note_rounded,
+                                                color: Colors.white,
+                                                size: 26,
+                                              );
+                                            },
+                                          )
+                                        : Icon(
+                                            file.isVideo ? Icons.videocam_rounded : Icons.music_note_rounded,
+                                            color: Colors.white,
+                                            size: 26,
+                                          ),
+                                  ),
+                                );
+                              }
                             ),
                             const SizedBox(width: 14),
                             // Title and subtitle
@@ -760,7 +846,10 @@ class _MediaHomePageState extends State<MediaHomePage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    file.displayName,
+                                    _metadataService?.getDisplayName(
+                                      file.path,
+                                      file.displayName,
+                                    ) ?? file.displayName,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
@@ -771,7 +860,9 @@ class _MediaHomePageState extends State<MediaHomePage> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    file.formattedSize,
+                                    _metadataService?.getDescription(file.path) ?? file.formattedSize,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontSize: 13,
                                       color: Colors.white38,
@@ -1005,10 +1096,61 @@ class _MediaHomePageState extends State<MediaHomePage> {
                   icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
                   onPressed: () => _scanForFiles(forceRefresh: true),
                 ),
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: const Color(0xFF8B5CF6),
-                child: const Icon(Icons.person, color: Colors.white, size: 20),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white, size: 24),
+                offset: const Offset(0, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                color: const Color(0xFF1E1E1E),
+                elevation: 8,
+                onSelected: (value) {
+                  if (value == 'edit_audio' && !_isVideo && _currentPlayingIndex >= 0) {
+                    _showAudioEditDialog();
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (!_isVideo && _currentPlayingIndex >= 0)
+                    PopupMenuItem(
+                      value: 'edit_audio',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.edit, size: 20, color: Color(0xFF8B5CF6)),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Edit Audio Info',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: 'settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings, size: 20, color: Colors.white.withOpacity(0.7)),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Settings',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'about',
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 20, color: Colors.white.withOpacity(0.7)),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'About',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1018,13 +1160,18 @@ class _MediaHomePageState extends State<MediaHomePage> {
   }
 
   Widget? _buildMiniPlayer() {
-    // Only show mini player when in list view and audio is playing
+    // Only show mini player when in list view and audio is loaded and playing (not video)
     if (!_showList || _currentPlayingIndex < 0 || _isVideo) {
       return null;
     }
 
-    final currentList = _currentView == 'videos' ? _videoFiles : _audioFiles;
-    final playList = _isShuffleEnabled ? _shuffledMediaFiles : currentList;
+    // Check if audio player has any content loaded
+    if (_mediaService.audioPlayer.processingState == ProcessingState.idle) {
+      return null;
+    }
+
+    // Use audio files for mini player since it only displays when audio is playing
+    final playList = _isShuffleEnabled ? _shuffledMediaFiles : _audioFiles;
     
     if (_currentPlayingIndex >= playList.length) {
       return null;
@@ -1032,52 +1179,79 @@ class _MediaHomePageState extends State<MediaHomePage> {
 
     final currentFile = playList[_currentPlayingIndex];
 
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _showList = false;
-        });
-      },
-      child: Container(
-        height: 72,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1E1E2E),
-              Color(0xFF2D1B4E),
+    return Container(
+      color: Colors.transparent,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _showList = false;
+          });
+        },
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF1E1E2E),
+                Color(0xFF2D1B4E),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
+              ),
             ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
             children: [
               // Album art
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.music_note_rounded,
-                  color: Colors.white,
-                  size: 24,
-                ),
+              Builder(
+                builder: (context) {
+                  final customImagePath = _metadataService?.getCustomImagePath(currentFile.path);
+                  return SizedBox(
+                    width: 50,
+                    height: 50,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: customImagePath == null ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)],
+                        ) : null,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: customImagePath != null
+                            ? Image.file(
+                                File(customImagePath),
+                                fit: BoxFit.cover,
+                                width: 50,
+                                height: 50,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Icon(
+                                    Icons.music_note_rounded,
+                                    color: Colors.white,
+                                    size: 24,
+                                  );
+                                },
+                              )
+                            : const Icon(
+                                Icons.music_note_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                      ),
+                    ),
+                  );
+                }
               ),
               const SizedBox(width: 12),
               // Song info
@@ -1087,7 +1261,10 @@ class _MediaHomePageState extends State<MediaHomePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      currentFile.displayName,
+                      _metadataService?.getDisplayName(
+                        currentFile.path,
+                        currentFile.displayName,
+                      ) ?? currentFile.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -1098,7 +1275,9 @@ class _MediaHomePageState extends State<MediaHomePage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      currentFile.formattedSize,
+                      _metadataService?.getDescription(currentFile.path) ?? currentFile.formattedSize,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 12,
@@ -1160,6 +1339,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
