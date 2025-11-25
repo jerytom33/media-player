@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/equalizer_service.dart';
+import '../services/audio_processing_service.dart';
 
 class EqualizerScreen extends StatefulWidget {
-  const EqualizerScreen({super.key});
+  final String? filePath;
+  const EqualizerScreen({super.key, this.filePath});
 
   @override
   State<EqualizerScreen> createState() => _EqualizerScreenState();
@@ -47,6 +50,27 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  Future<void> _apply() async {
+    if (widget.filePath == null || widget.filePath!.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No file to apply equalizer to.')));
+      return;
+    }
+    final f = File(widget.filePath!);
+    if (!f.existsSync()) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selected file no longer exists on disk.')));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final out = await AudioProcessingService.getInstance().applyEqualizerToFile(widget.filePath!, _settings);
+      if (mounted) Navigator.pop(context, out);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to process file: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -59,7 +83,16 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
         title: const Text('Equalizer'),
         backgroundColor: const Color(0xFF1E1E2E),
         actions: [
-          TextButton(onPressed: _save, child: const Text('Save', style: TextStyle(color: Color(0xFF8B5CF6))))
+          if (!_loading)
+            TextButton(onPressed: _save, child: const Text('Save', style: TextStyle(color: Color(0xFF8B5CF6))))
+          else
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))) ,
+          const SizedBox(width: 8),
+          // Apply button
+          if (!_loading)
+            TextButton(onPressed: _apply, child: const Text('Apply', style: TextStyle(color: Color(0xFF8B5CF6))))
+          else
+            const SizedBox.shrink(),
         ],
       ),
       backgroundColor: const Color(0xFF12121A),
@@ -85,6 +118,13 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            if (widget.filePath != null) ...[
+              Text('Processing will create a temporary file and won\'t change the original', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              const SizedBox(height: 8),
+            ] else ...[
+              Text('No file selected. Use Equalizer from the player screen to apply changes to the currently playing file.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 const Text('Bands', style: TextStyle(color: Colors.white)),

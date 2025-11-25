@@ -13,7 +13,6 @@ import '../widgets/video_player_widget.dart';
 import 'audio_edit_screen.dart';
 import '../services/user_profile_service.dart';
 import 'package:file_picker/file_picker.dart';
-import '../services/equalizer_service.dart';
 import 'equalizer_screen.dart';
 
 class MediaHomePage extends StatefulWidget {
@@ -1313,7 +1312,28 @@ class _MediaHomePageState extends State<MediaHomePage> {
                     if (value == 'edit') {
                       _showAudioEditDialog();
                     } else if (value == 'equalizer') {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const EqualizerScreen()));
+                      final result = await Navigator.push<String?>(
+                        context,
+                        MaterialPageRoute(builder: (_) => EqualizerScreen(filePath: _filePath)),
+                      );
+                      if (result != null && result.isNotEmpty) {
+                          try {
+                          await _mediaService.loadMedia(path: result, isVideo: false);
+                          if (!mounted) return;
+                          setState(() {
+                            _filePath = result;
+                            _isVideo = false;
+                            _showList = false;
+                          });
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Applied equalizer & loaded processed audio')),
+                              );
+                            }
+                        } catch (e) {
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load processed file: $e')));
+                        }
+                      }
                     } else if (value == 'settings') {
                       // TODO: open settings
                     } else if (value == 'about') {
