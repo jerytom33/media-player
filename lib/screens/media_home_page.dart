@@ -30,9 +30,10 @@ class _MediaHomePageState extends State<MediaHomePage> {
   List<MediaFile> _filteredFiles = [];
   List<Playlist> _playlists = [];
   Set<String> _likedSongs = {};
+  Playlist? _currentPlaylist;
   bool _isScanning = false;
   bool _showList = true;
-  String _currentView = 'audio'; // 'audio', 'videos', 'playlists', 'liked'
+  String _currentView = 'audio'; // 'audio', 'videos', 'playlists', 'liked', 'playlist_view'
   int _currentPlayingIndex = -1;
   bool _isVideoFullScreen = false;
   bool _isShuffleEnabled = false;
@@ -374,11 +375,11 @@ class _MediaHomePageState extends State<MediaHomePage> {
 
   void _handleAudioCompletion() {
     if (_repeatMode == LoopMode.off) {
-      // Auto play next if available
+      // Auto play next if available (in background, don't switch screens)
       final currentList = _currentView == 'videos' ? _videoFiles : _audioFiles;
       final playList = _isShuffleEnabled ? _shuffledMediaFiles : currentList;
       if (_currentPlayingIndex >= 0 && _currentPlayingIndex < playList.length - 1) {
-        _playNext();
+        _playNextInBackground();
       }
     }
     // LoopMode.one and LoopMode.all are handled automatically by just_audio
@@ -660,7 +661,9 @@ class _MediaHomePageState extends State<MediaHomePage> {
                         ? 'All Videos'
                         : _currentView == 'liked'
                             ? 'Liked Songs'
-                            : 'All Audio',
+                            : _currentView == 'playlist_view'
+                                ? _currentPlaylist?.name ?? 'Playlist'
+                                : 'All Audio',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -688,7 +691,25 @@ class _MediaHomePageState extends State<MediaHomePage> {
             onRefresh: () async {
               if (_currentView == 'playlists') {
                 await _loadPlaylists();
+              } else if (_currentView == 'playlist_view') {
+                // Refresh the current playlist
+                await _loadPlaylists();
+                if (_currentPlaylist != null) {
+                  final updatedPlaylist = _playlists.firstWhere(
+                    (p) => p.id == _currentPlaylist!.id,
+                    orElse: () => _currentPlaylist!,
+                  );
+                  setState(() {
+                    _currentPlaylist = updatedPlaylist;
+                  });
+                }
+              } else if (_currentView == 'liked') {
+                await _loadLikedSongs();
+                setState(() {
+                  _filteredFiles = _audioFiles.where((file) => _likedSongs.contains(file.path)).toList();
+                });
               } else {
+                // Only refresh for 'audio' and 'videos' views
                 await _scanForFiles(forceRefresh: true);
               }
             },
@@ -770,20 +791,68 @@ class _MediaHomePageState extends State<MediaHomePage> {
                             // Heart button (only for audio files)
                             if (!file.isVideo) ...[
                               const SizedBox(width: 8),
-                              IconButton(
-                                icon: Icon(
-                                  _likedSongs.contains(file.path) 
-                                      ? Icons.favorite 
-                                      : Icons.favorite_border,
-                                  color: _likedSongs.contains(file.path) 
-                                      ? Colors.red 
-                                      : Colors.white54,
-                                  size: 24,
+                              // Show remove button in playlist view, heart button otherwise
+                              if (_currentView == 'playlist_view' && _currentPlaylist != null)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.remove_circle_outline,
+                                    color: Colors.redAccent,
+                                    size: 24,
+                                  ),
+                                  splashColor: Colors.redAccent.withOpacity(0.3),
+                                  highlightColor: Colors.redAccent.withOpacity(0.2),
+                                  onPressed: () async {
+                                    // Remove from playlist
+                                    final updatedPaths = List<String>.from(_currentPlaylist!.mediaFilePaths)
+                                      ..remove(file.path);
+                                    
+                                    if (updatedPaths.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Cannot remove the last song from playlist'),
+                                          backgroundColor: Colors.redAccent,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    
+                                    final updatedPlaylist = _currentPlaylist!.copyWith(
+                                      mediaFilePaths: updatedPaths,
+                                    );
+                                    
+                                    await _playlistService.updatePlaylist(updatedPlaylist);
+                                    await _loadPlaylists();
+                                    
+                                    setState(() {
+                                      _currentPlaylist = updatedPlaylist;
+                                      _filteredFiles.remove(file);
+                                    });
+                                    
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Removed from "${_currentPlaylist!.name}"'),
+                                          backgroundColor: const Color(0xFF8B5CF6),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                )
+                              else
+                                IconButton(
+                                  icon: Icon(
+                                    _likedSongs.contains(file.path) 
+                                        ? Icons.favorite 
+                                        : Icons.favorite_border,
+                                    color: _likedSongs.contains(file.path) 
+                                        ? Colors.red 
+                                        : Colors.white54,
+                                    size: 24,
+                                  ),
+                                  splashColor: Colors.red.withOpacity(0.3),
+                                  highlightColor: Colors.red.withOpacity(0.2),
+                                  onPressed: () => _toggleLikedSong(file),
                                 ),
-                                splashColor: Colors.red.withOpacity(0.3),
-                                highlightColor: Colors.red.withOpacity(0.2),
-                                onPressed: () => _toggleLikedSong(file),
-                              ),
                             ],
                           ],
                         ),
@@ -890,13 +959,19 @@ class _MediaHomePageState extends State<MediaHomePage> {
                 setState(() => _showList = true);
               },
             )
-          else if (_currentView == 'liked')
+          else if (_currentView == 'liked' || _currentView == 'playlist_view')
             IconButton(
               icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
               onPressed: () {
                 setState(() {
-                  _currentView = 'audio';
-                  _filteredFiles = _audioFiles;
+                  if (_currentView == 'playlist_view') {
+                    _currentView = 'playlists';
+                    _currentPlaylist = null;
+                    // No need to set _filteredFiles for playlists view
+                  } else {
+                    _currentView = 'audio';
+                    _filteredFiles = _audioFiles;
+                  }
                 });
               },
             )
@@ -1609,30 +1684,57 @@ class _MediaHomePageState extends State<MediaHomePage> {
       return;
     }
 
-    // Separate playlist files into audio and video
+    // Only show audio files in playlists
     final playlistAudio = playlistFiles.where((f) => !f.isVideo).toList();
-    final playlistVideo = playlistFiles.where((f) => f.isVideo).toList();
     
-    // Determine which type to use (prefer audio, fallback to video)
-    final filesToPlay = playlistAudio.isNotEmpty ? playlistAudio : playlistVideo;
-    final isVideoPlaylist = playlistAudio.isEmpty;
+    if (playlistAudio.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audio files found in this playlist')),
+      );
+      return;
+    }
     
     setState(() {
-      if (isVideoPlaylist) {
-        _videoFiles = filesToPlay;
-        _currentView = 'videos';
-      } else {
-        _audioFiles = filesToPlay;
-        _currentView = 'audio';
-      }
+      _currentPlaylist = playlist;
+      _currentView = 'playlist_view';
+      _filteredFiles = playlistAudio;
+      _currentPlayingIndex = 0;
       
       if (_isShuffleEnabled) {
-        _shuffledMediaFiles = List<MediaFile>.from(filesToPlay)..shuffle();
+        _shuffledMediaFiles = List<MediaFile>.from(playlistAudio)..shuffle();
       }
     });
 
-    // Play the first file
-    final playList = _isShuffleEnabled ? _shuffledMediaFiles : filesToPlay;
-    await _playMediaFile(playList[0]);
+    // Start playing the first audio in background (don't switch to player view)
+    final firstFile = playlistAudio[0];
+    try {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _filePath = firstFile.path;
+        _isVideo = false;
+      });
+
+      await _mediaService.loadMediaFromFile(firstFile);
+      
+      if (!mounted) return;
+      setState(() => _loading = false);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Playing "${playlist.name}"'),
+            backgroundColor: const Color(0xFF8B5CF6),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to load media: $e';
+        _loading = false;
+      });
+    }
   }
 }

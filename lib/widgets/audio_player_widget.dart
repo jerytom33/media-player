@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../utils/format_utils.dart';
 
-class AudioPlayerWidget extends StatelessWidget {
+class AudioPlayerWidget extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final String? filePath;
   final VoidCallback? onNext;
@@ -28,13 +28,25 @@ class AudioPlayerWidget extends StatelessWidget {
   });
 
   @override
+  State<AudioPlayerWidget> createState() => _AudioPlayerWidgetState();
+}
+
+class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
+  double _playbackSpeed = 1.0;
+
+  void _setPlaybackSpeed(double speed) {
+    setState(() => _playbackSpeed = speed);
+    widget.audioPlayer.setSpeed(speed);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<Duration?>(
-      stream: audioPlayer.durationStream,
+      stream: widget.audioPlayer.durationStream,
       builder: (context, durationSnap) {
         final total = durationSnap.data ?? Duration.zero;
         return StreamBuilder<Duration>(
-          stream: audioPlayer.positionStream,
+          stream: widget.audioPlayer.positionStream,
           builder: (context, positionSnap) {
             final position = positionSnap.data ?? Duration.zero;
             final pct = total.inMilliseconds == 0
@@ -76,20 +88,20 @@ class AudioPlayerWidget extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     // Add to playlist button
-                    if (onAddToPlaylist != null)
+                    if (widget.onAddToPlaylist != null)
                       IconButton(
                         icon: const Icon(
                           Icons.playlist_add,
                           color: Color(0xFF8B5CF6),
                           size: 28,
                         ),
-                        onPressed: onAddToPlaylist,
+                        onPressed: widget.onAddToPlaylist,
                         tooltip: 'Add to Playlist',
                       ),
                     const SizedBox(height: 8),
                     // Song title
                     Text(
-                      FormatUtils.getDisplayName(filePath),
+                      FormatUtils.getDisplayName(widget.filePath),
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -132,7 +144,7 @@ class AudioPlayerWidget extends StatelessWidget {
                                 final seekTo = Duration(
                                   milliseconds: (total.inMilliseconds * v).round(),
                                 );
-                                await audioPlayer.seek(seekTo);
+                                await widget.audioPlayer.seek(seekTo);
                               },
                       ),
                     ),
@@ -161,33 +173,137 @@ class AudioPlayerWidget extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     // Control buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Shuffle button
-                        IconButton(
-                          icon: Icon(
-                            Icons.shuffle_rounded,
-                            size: 28,
-                            color: isShuffleEnabled ? const Color(0xFF8B5CF6) : Colors.white38,
-                          ),
-                          onPressed: onShuffleToggle,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          // Shuffle & Repeat combined button
+                          PopupMenuButton<String>(
+                            icon: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: (widget.isShuffleEnabled || widget.repeatMode != LoopMode.off)
+                                    ? const Color(0xFF8B5CF6).withOpacity(0.2)
+                                    : Colors.white.withOpacity(0.05),
+                                border: Border.all(
+                                  color: (widget.isShuffleEnabled || widget.repeatMode != LoopMode.off)
+                                      ? const Color(0xFF8B5CF6)
+                                      : Colors.white24,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(
+                                    widget.isShuffleEnabled ? Icons.shuffle_rounded : Icons.repeat_rounded,
+                                    size: 20,
+                                    color: (widget.isShuffleEnabled || widget.repeatMode != LoopMode.off)
+                                        ? const Color(0xFF8B5CF6)
+                                        : Colors.white54,
+                                  ),
+                                  if (!widget.isShuffleEnabled && widget.repeatMode == LoopMode.one)
+                                    Positioned(
+                                      bottom: 9,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF8B5CF6),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Text(
+                                          '1',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'shuffle') {
+                                widget.onShuffleToggle?.call();
+                              } else if (value == 'repeat') {
+                                widget.onRepeatToggle?.call();
+                              }
+                            },
+                            offset: const Offset(0, 50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            color: const Color(0xFF1E1E1E),
+                            elevation: 8,
+                            constraints: const BoxConstraints(
+                              minWidth: 170,
+                              maxWidth: 220,
+                            ),
+                            itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 'shuffle',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.shuffle_rounded,
+                                    color: widget.isShuffleEnabled ? const Color(0xFF8B5CF6) : Colors.white70,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    widget.isShuffleEnabled ? 'Shuffle: ON' : 'Shuffle: OFF',
+                                    style: TextStyle(
+                                      color: widget.isShuffleEnabled ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: widget.isShuffleEnabled ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'repeat',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    widget.repeatMode == LoopMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+                                    color: widget.repeatMode != LoopMode.off ? const Color(0xFF8B5CF6) : Colors.white70,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    widget.repeatMode == LoopMode.off
+                                        ? 'Repeat: OFF'
+                                        : widget.repeatMode == LoopMode.one
+                                            ? 'Repeat: One'
+                                            : 'Repeat: All',
+                                    style: TextStyle(
+                                      color: widget.repeatMode != LoopMode.off ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: widget.repeatMode != LoopMode.off ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
                         // Previous button
                         IconButton(
+                          iconSize: 32,
                           icon: Icon(
                             Icons.skip_previous_rounded,
-                            size: 36,
-                            color: onPrevious != null ? Colors.white : Colors.white24,
+                            color: widget.onPrevious != null ? Colors.white : Colors.white24,
                           ),
-                          onPressed: onPrevious,
+                          onPressed: widget.onPrevious,
                         ),
-                        const SizedBox(width: 16),
                         // Play/Pause button
                         Container(
-                          width: 64,
-                          height: 64,
+                          width: 56,
+                          height: 56,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: const LinearGradient(
@@ -208,66 +324,205 @@ class AudioPlayerWidget extends StatelessWidget {
                           ),
                           child: IconButton(
                             icon: Icon(
-                              audioPlayer.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                              size: 34,
+                              widget.audioPlayer.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                              size: 30,
                             ),
                             color: Colors.white,
                             onPressed: () async {
-                              if (audioPlayer.playing) {
-                                await audioPlayer.pause();
+                              if (widget.audioPlayer.playing) {
+                                await widget.audioPlayer.pause();
                               } else {
-                                unawaited(audioPlayer.play());
+                                unawaited(widget.audioPlayer.play());
                               }
                             },
                           ),
                         ),
-                        const SizedBox(width: 16),
                         // Next button
                         IconButton(
+                          iconSize: 32,
                           icon: Icon(
                             Icons.skip_next_rounded,
-                            size: 36,
-                            color: onNext != null ? Colors.white : Colors.white24,
+                            color: widget.onNext != null ? Colors.white : Colors.white24,
                           ),
-                          onPressed: onNext,
+                          onPressed: widget.onNext,
                         ),
-                        const SizedBox(width: 8),
-                        // Repeat button
-                        IconButton(
-                          icon: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                Icons.repeat_rounded,
-                                size: 28,
-                                color: repeatMode != LoopMode.off 
-                                    ? const Color(0xFF8B5CF6) 
-                                    : Colors.white38,
+                        // Speed control button with timer icon
+                        PopupMenuButton<double>(
+                          icon: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _playbackSpeed != 1.0
+                                  ? const Color(0xFF8B5CF6).withOpacity(0.2)
+                                  : Colors.white.withOpacity(0.05),
+                              border: Border.all(
+                                color: _playbackSpeed != 1.0 ? const Color(0xFF8B5CF6) : Colors.white24,
+                                width: 1.5,
                               ),
-                              if (repeatMode == LoopMode.one)
-                                Positioned(
-                                  bottom: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF8B5CF6),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: const Text(
-                                      '1',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                            ),
+                            child: Icon(
+                              Icons.timer_outlined,
+                              size: 20,
+                              color: _playbackSpeed != 1.0 ? const Color(0xFF8B5CF6) : Colors.white54,
+                            ),
+                          ),
+                          onSelected: _setPlaybackSpeed,
+                          offset: const Offset(-50, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          color: const Color(0xFF1E1E1E),
+                          elevation: 8,
+                          constraints: const BoxConstraints(
+                            minWidth: 140,
+                            maxWidth: 180,
+                          ),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 0.5,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: _playbackSpeed == 0.5 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '0.5x',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 0.5 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 0.5 ? FontWeight.bold : FontWeight.normal,
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                          onPressed: onRepeatToggle,
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 0.75,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: _playbackSpeed == 0.75 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '0.75x',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 0.75 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 0.75 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 1.0,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle,
+                                    size: 18,
+                                    color: _playbackSpeed == 1.0 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '1x (Normal)',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 1.0 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 1.0 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 1.25,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: _playbackSpeed == 1.25 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '1.25x',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 1.25 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 1.25 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 1.5,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: _playbackSpeed == 1.5 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '1.5x',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 1.5 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 1.5 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 1.75,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: _playbackSpeed == 1.75 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '1.75x',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 1.75 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 1.75 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 2.0,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: _playbackSpeed == 2.0 ? const Color(0xFF8B5CF6) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '2x',
+                                    style: TextStyle(
+                                      color: _playbackSpeed == 2.0 ? const Color(0xFF8B5CF6) : Colors.white,
+                                      fontWeight: _playbackSpeed == 2.0 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
