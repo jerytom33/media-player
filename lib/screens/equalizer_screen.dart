@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/equalizer_service.dart';
-import '../services/audio_processing_service.dart';
+import '../services/runtime_equalizer_service.dart';
 
 class EqualizerScreen extends StatefulWidget {
   final String? filePath;
@@ -43,10 +43,16 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
         enabled: _settings.enabled,
       );
     });
+    // Apply in real-time to runtime equalizer
+    try {
+      final runtime = RuntimeEqualizerService.getInstance();
+      runtime.setBands(_settings.bands, _settings.bandCount);
+    } catch (_) {}
   }
 
   void _save() async {
     await _service.setSettings(_settings);
+    // persist and close
     if (mounted) Navigator.pop(context);
   }
 
@@ -62,8 +68,13 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
     }
     setState(() => _loading = true);
     try {
-      final out = await AudioProcessingService.getInstance().applyEqualizerToFile(widget.filePath!, _settings);
-      if (mounted) Navigator.pop(context, out);
+      // For runtime equalizer, just close and let playback use runtime settings. For offline processing, use AudioProcessingService when available.
+      final runtime = RuntimeEqualizerService.getInstance();
+      await runtime.setBands(_settings.bands, _settings.bandCount);
+      await runtime.setBassBoost(_settings.bassBoost);
+      await runtime.setVirtualizer(_settings.virtualizer);
+      await runtime.setEnabled(_settings.enabled);
+      if (mounted) Navigator.pop(context, null); // null indicates no processed file path
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to process file: $e')));
     } finally {
@@ -107,13 +118,17 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                 const Spacer(),
                 Switch(
                   value: _settings.enabled,
-                  onChanged: (v) => setState(() => _settings = EqualizerSettings(
-                    bandCount: _settings.bandCount,
-                    bands: _settings.bands,
-                    bassBoost: _settings.bassBoost,
-                    virtualizer: _settings.virtualizer,
-                    enabled: v,
-                  )),
+                  onChanged: (v) async {
+                    setState(() => _settings = EqualizerSettings(
+                      bandCount: _settings.bandCount,
+                      bands: _settings.bands,
+                      bassBoost: _settings.bassBoost,
+                      virtualizer: _settings.virtualizer,
+                      enabled: v,
+                    ));
+                    final runtime = RuntimeEqualizerService.getInstance();
+                    await runtime.setEnabled(v);
+                  },
                 ),
               ],
             ),
@@ -138,6 +153,11 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                       newBands[j] = _settings.bands[j];
                     }
                     setState(() {
+                                          // Apply band count change to runtime equalizer
+                                          try {
+                                            final runtime = RuntimeEqualizerService.getInstance();
+                                            runtime.setBands(_settings.bands, newCount);
+                                          } catch (_) {}
                       _settings = EqualizerSettings(
                         bandCount: newCount,
                         bands: newBands,
@@ -192,13 +212,17 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
               max: 1.0,
               divisions: 100,
               label: '${(_settings.bassBoost * 100).round()}%',
-              onChanged: (v) => setState(() => _settings = EqualizerSettings(
-                bandCount: _settings.bandCount,
-                bands: _settings.bands,
-                bassBoost: v,
-                virtualizer: _settings.virtualizer,
-                enabled: _settings.enabled,
-              )),
+              onChanged: (v) async {
+                setState(() => _settings = EqualizerSettings(
+                  bandCount: _settings.bandCount,
+                  bands: _settings.bands,
+                  bassBoost: v,
+                  virtualizer: _settings.virtualizer,
+                  enabled: _settings.enabled,
+                ));
+                final runtime = RuntimeEqualizerService.getInstance();
+                await runtime.setBassBoost(v);
+              },
             ),
             const SizedBox(height: 8),
             const Text('Virtualizer', style: TextStyle(color: Colors.white)),
@@ -208,13 +232,17 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
               max: 1.0,
               divisions: 100,
               label: '${(_settings.virtualizer * 100).round()}%',
-              onChanged: (v) => setState(() => _settings = EqualizerSettings(
-                bandCount: _settings.bandCount,
-                bands: _settings.bands,
-                bassBoost: _settings.bassBoost,
-                virtualizer: v,
-                enabled: _settings.enabled,
-              )),
+              onChanged: (v) async {
+                setState(() => _settings = EqualizerSettings(
+                  bandCount: _settings.bandCount,
+                  bands: _settings.bands,
+                  bassBoost: _settings.bassBoost,
+                  virtualizer: v,
+                  enabled: _settings.enabled,
+                ));
+                final runtime = RuntimeEqualizerService.getInstance();
+                await runtime.setVirtualizer(v);
+              },
             ),
             const SizedBox(height: 8),
           ],

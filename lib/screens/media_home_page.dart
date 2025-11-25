@@ -6,6 +6,7 @@ import '../services/media_service.dart';
 import '../services/playlist_service.dart';
 import '../services/liked_songs_service.dart';
 import '../services/audio_metadata_service.dart';
+import '../services/runtime_equalizer_service.dart';
 import '../models/media_file.dart';
 import '../models/playlist.dart';
 import '../widgets/audio_player_widget.dart';
@@ -87,6 +88,14 @@ class _MediaHomePageState extends State<MediaHomePage> {
       });
 
       await _mediaService.loadMediaFromFile(file);
+      // Notify runtime equalizer of session id (Android) so effects can be applied
+      try {
+        final sessionId = _mediaService.getAudioSessionId();
+        if (sessionId != null) {
+          final eq = RuntimeEqualizerService.getInstance();
+          await eq.setAudioSessionId(sessionId);
+        }
+      } catch (_) {}
       
       if (!mounted) return;
       setState(() => _loading = false);
@@ -449,17 +458,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
     });
   }
 
-  void _handleAudioCompletion() {
-    if (_repeatMode == LoopMode.off) {
-      // Auto play next if available (in background, don't switch screens)
-      final currentList = _currentView == 'videos' ? _videoFiles : _audioFiles;
-      final playList = _isShuffleEnabled ? _shuffledMediaFiles : currentList;
-      if (_currentPlayingIndex >= 0 && _currentPlayingIndex < playList.length - 1) {
-        _playNextInBackground();
-      }
-    }
-    // LoopMode.one and LoopMode.all are handled automatically by just_audio
-  }
+  // Audio completion handling is managed by just_audio loop modes and UI; keep here if needed later
 
   void _onFullScreenChanged(bool isFullScreen) {
     setState(() {

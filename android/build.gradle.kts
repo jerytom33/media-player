@@ -3,7 +3,8 @@ allprojects {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
-        maven { url = uri("https://maven.pkg.github.com/arthenica/ffmpeg-kit") }
+        // Removed ffmpeg-kit Maven repository that requires GitHub Packages credentials.
+        // If you need offline FFmpeg processing, re-add the repository & credentials or use an alternate distribution.
     }
 }
 

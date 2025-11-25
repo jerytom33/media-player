@@ -1,0 +1,13 @@
+name: equalizer_flutter
+version: 0.0.1
+description: Local shim for equalizer_flutter used during development.
+environment:
+  sdk: ">=2.18.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms: {}

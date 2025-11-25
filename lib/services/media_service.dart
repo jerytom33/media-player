@@ -109,6 +109,15 @@ class MediaService {
     }
   }
 
+  /// Returns Android audio session id if available (null otherwise).
+  int? getAudioSessionId() {
+    try {
+      return audioPlayer.androidAudioSessionId;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void dispose() {
     audioPlayer.dispose();
     videoController?.dispose();
