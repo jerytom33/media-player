@@ -22,6 +22,7 @@ class MediaHomePage extends StatefulWidget {
 }
 
 class _MediaHomePageState extends State<MediaHomePage> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late final MediaService _mediaService;
   late final PlaylistService _playlistService;
   late final LikedSongsService _likedSongsService;
@@ -1059,6 +1060,137 @@ class _MediaHomePageState extends State<MediaHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: Drawer(
+        backgroundColor: const Color(0xFF12121A),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Colors.white24,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: _profileImagePath != null
+                            ? Image.file(
+                                File(_profileImagePath!),
+                                fit: BoxFit.cover,
+                                width: 60,
+                                height: 60,
+                                errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, color: Colors.white),
+                              )
+                            : const Icon(Icons.person, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Profile', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text(
+                            _profileImagePath != null ? 'Image set' : 'No picture',
+                            style: const TextStyle(color: Colors.white54, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.white70),
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await _pickProfileImage();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Colors.white12),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.person, color: Color(0xFF8B5CF6)),
+                      title: const Text('Profile', style: TextStyle(color: Colors.white)),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await _pickProfileImage();
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.playlist_play, color: Color(0xFF8B5CF6)),
+                      title: const Text('Playlists', style: TextStyle(color: Colors.white)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _currentView = 'playlists';
+                          _showList = true;
+                        });
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.settings, color: Colors.white70),
+                      title: const Text('Settings', style: TextStyle(color: Colors.white)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E2E),
+                            title: const Text('Settings', style: TextStyle(color: Colors.white)),
+                            content: const Text('Settings screen placeholder', style: TextStyle(color: Colors.white70)),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white54))),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.upgrade, color: Colors.amber),
+                      title: const Text('Pro Version', style: TextStyle(color: Colors.white)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E2E),
+                            title: const Text('Pro Version', style: TextStyle(color: Colors.white)),
+                            content: const Text('Pro features placeholder. Implement purchase flow here.', style: TextStyle(color: Colors.white70)),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white54))),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.info_outline, color: Colors.white70),
+                      title: const Text('About', style: TextStyle(color: Colors.white)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        showAboutDialog(
+                          context: context,
+                          applicationName: 'Media Player',
+                          applicationVersion: '0.1.0',
+                          children: [const Text('A lightweight media player', style: TextStyle(color: Colors.white70))],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -1123,7 +1255,7 @@ class _MediaHomePageState extends State<MediaHomePage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.menu, color: Colors.white, size: 26),
-                  onPressed: () {},
+                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                 ),
                 const SizedBox(width: 12),
                 Column(
@@ -1148,69 +1280,9 @@ class _MediaHomePageState extends State<MediaHomePage> {
                   icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
                   onPressed: () => _scanForFiles(forceRefresh: true),
                 ),
-              // Profile button (replaces three-dot menu). Tapping opens profile actions.
-              GestureDetector(
-                onTap: () {
-                  showModalBottomSheet<void>(
-                    context: context,
-                    backgroundColor: const Color(0xFF1E1E2E),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                    ),
-                    builder: (context) {
-                      return SafeArea(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ListTile(
-                              leading: const Icon(Icons.photo_camera, color: Color(0xFF8B5CF6)),
-                              title: const Text('Change Profile Picture', style: TextStyle(color: Colors.white)),
-                              onTap: () async {
-                                Navigator.pop(context);
-                                await _pickProfileImage();
-                              },
-                            ),
-                            if (_profileImagePath != null)
-                              ListTile(
-                                leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                                title: const Text('Remove Profile Picture', style: TextStyle(color: Colors.white)),
-                                onTap: () async {
-                                  Navigator.pop(context);
-                                  await _removeProfileImage();
-                                },
-                              ),
-                            if (!_isVideo && _currentPlayingIndex >= 0)
-                              ListTile(
-                                leading: const Icon(Icons.edit, color: Color(0xFF8B5CF6)),
-                                title: const Text('Edit Audio Info', style: TextStyle(color: Colors.white)),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _showAudioEditDialog();
-                                },
-                              ),
-                            ListTile(
-                              leading: Icon(Icons.settings, color: Colors.white.withOpacity(0.7)),
-                              title: const Text('Settings', style: TextStyle(color: Colors.white)),
-                              onTap: () {
-                                Navigator.pop(context);
-                                // TODO: open settings
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.info_outline, color: Colors.white.withOpacity(0.7)),
-                              title: const Text('About', style: TextStyle(color: Colors.white)),
-                              onTap: () {
-                                Navigator.pop(context);
-                                // TODO: show about dialog
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-                child: Padding(
+              // Right-side actions: profile on Home list; three-dot menu on audio player
+              if (_showList)
+                Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: CircleAvatar(
                     radius: 18,
@@ -1230,8 +1302,70 @@ class _MediaHomePageState extends State<MediaHomePage> {
                           : const Icon(Icons.person, color: Colors.white),
                     ),
                   ),
-                ),
-              ),
+                )
+              else if (!_isVideo)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  color: const Color(0xFF1E1E2E),
+                  onSelected: (value) {
+                    if (value == 'edit') {
+                      _showAudioEditDialog();
+                    } else if (value == 'settings') {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          backgroundColor: const Color(0xFF1E1E2E),
+                          title: const Text('Settings', style: TextStyle(color: Colors.white)),
+                          content: const Text('Settings screen placeholder', style: TextStyle(color: Colors.white70)),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white54))),
+                          ],
+                        ),
+                      );
+                    } else if (value == 'about') {
+                      showAboutDialog(
+                        context: context,
+                        applicationName: 'Media Player',
+                        applicationVersion: '0.1.0',
+                        children: [const Text('A lightweight media player', style: TextStyle(color: Colors.white70))],
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, size: 18, color: Colors.white70),
+                          SizedBox(width: 12),
+                          Text('Edit Audio Info', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'settings',
+                      child: Row(
+                        children: [
+                          Icon(Icons.settings, size: 18, color: Colors.white70),
+                          SizedBox(width: 12),
+                          Text('Settings', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'about',
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 18, color: Colors.white70),
+                          SizedBox(width: 12),
+                          Text('About', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              else
+                const SizedBox(width: 48),
             ],
           ),
         ],
