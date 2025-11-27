@@ -5,7 +5,6 @@ import '../platform/dj_toolbar_bridge.dart' as djBridge;
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dj_controls_screen.dart';
 import '../widgets/audio_waveform_widget.dart';
 import '../services/dj_service.dart';
 
@@ -16,156 +15,8 @@ class DJRemixScreen extends StatefulWidget {
   State<DJRemixScreen> createState() => _DJRemixScreenState();
 }
 
-// Compact circular platter widget to match referenced UI
-class _DeckPlatter extends StatelessWidget {
-  final String label;
-  final String fileName;
-  final double bpm;
-  final bool isPlaying;
-  final VoidCallback onPick;
-  final VoidCallback onPlayPause;
-  final VoidCallback onCue;
-  final ValueChanged<int> onLoopSelected;
-
-  const _DeckPlatter({
-    required this.label,
-    required this.fileName,
-    required this.bpm,
-    required this.isPlaying,
-    required this.onPick,
-    required this.onPlayPause,
-    required this.onCue,
-    required this.onLoopSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final displayLabel = label == 'A'
-        ? 'Track 1'
-        : label == 'B'
-        ? 'Track 2'
-        : 'Deck $label';
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = constraints.biggest;
-        final platterSize = (size.shortestSide * 0.7).clamp(150.0, 340.0);
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: const Color(0xFF111215),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(displayLabel, style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: platterSize,
-                width: platterSize,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const RadialGradient(
-                          colors: [Color(0xFF2A2A40), Color(0xFF111215)],
-                        ),
-                        border: Border.all(color: Colors.white24, width: 2),
-                      ),
-                    ),
-                    // inner ring
-                    Container(
-                      height: platterSize * 0.65,
-                      width: platterSize * 0.65,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF1E1E2E),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${bpm.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      right: 8,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.folder_open,
-                              color: Colors.white70,
-                            ),
-                            onPressed: onPick,
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: onPlayPause,
-                            style: ElevatedButton.styleFrom(
-                              shape: const StadiumBorder(),
-                              backgroundColor: Colors.white,
-                            ),
-                            child: Icon(
-                              isPlaying ? Icons.pause : Icons.play_arrow,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.flag, color: Colors.white70),
-                            onPressed: onCue,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                fileName,
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: [
-                  _miniLoop(context, 1),
-                  _miniLoop(context, 2),
-                  _miniLoop(context, 4),
-                  _miniLoop(context, 8),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _miniLoop(BuildContext context, int beats) => SizedBox(
-    width: 44,
-    height: 32,
-    child: OutlinedButton(
-      onPressed: () => onLoopSelected(beats),
-      child: Text('$beats', style: const TextStyle(color: Colors.white70)),
-    ),
-  );
-}
-
-class _DJRemixScreenState extends State<DJRemixScreen> {
+class _DJRemixScreenState extends State<DJRemixScreen>
+    with SingleTickerProviderStateMixin {
   final DJService _dj = DJService();
   bool _isRecording = false;
   double _crossfader = 0.5;
@@ -173,9 +24,19 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
   double _deckBVol = 1.0;
   int _effectMode = 0; // 0: off, 1: bass, 2: virtualizer
   bool _toolbarRegistered = false;
+  late final AnimationController _spinControllerA;
+  late final AnimationController _spinControllerB;
 
   @override
   void initState() {
+    _spinControllerA = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    );
+    _spinControllerB = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    );
     super.initState();
     // Lock this particular screen to landscape only
     SystemChrome.setPreferredOrientations([
@@ -201,6 +62,8 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
 
   @override
   void dispose() {
+    _spinControllerA.dispose();
+    _spinControllerB.dispose();
     _dj.dispose();
     // Restore default orientations (allow portrait and landscape)
     SystemChrome.setPreferredOrientations([
@@ -437,11 +300,11 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
             // Horizontal view shows decks side-by-side as two "platters"
             Widget decksSideBySide = Row(
               children: [
-                Expanded(child: _buildDeckA()),
+                Expanded(child: _buildDeckA(constraints)),
                 const SizedBox(width: 12),
                 Container(width: 64, child: _buildVerticalCrossfader()),
                 const SizedBox(width: 12),
-                Expanded(child: _buildDeckB()),
+                Expanded(child: _buildDeckB(constraints)),
               ],
             );
 
@@ -487,8 +350,8 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
                             );
                           }
                           return SizedBox(
-                            height: math.min(constraints.maxHeight * 0.64, 380),
-                            child: isWide ? decksSideBySide : decksSideBySide,
+                            height: math.min(constraints.maxHeight * 0.64, 420),
+                            child: decksSideBySide,
                           );
                         },
                       ),
@@ -517,7 +380,8 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
     );
   }
 
-  Widget _buildDeckA() {
+  Widget _buildDeckA(BoxConstraints constraints) {
+    final platterSize = (constraints.maxWidth / 4).clamp(140.0, 260.0);
     return StreamBuilder<DeckState>(
       stream: _dj.deckAState,
       initialData: DeckState(
@@ -526,37 +390,36 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
         isPlaying: false,
       ),
       builder: (context, snapshot) {
-        final state = snapshot.data!;
-        final fileName = state.filePath != null
-            ? state.filePath!.split(Platform.pathSeparator).last
-            : 'No File';
-        return _DeckPlatter(
-          label: 'A',
-          fileName: fileName,
-          bpm: state.bpm,
-          isPlaying: state.isPlaying,
-          onPick: _pickForDeckA,
-          onPlayPause: () async {
-            if (state.isPlaying)
-              await _dj.pauseDeckA();
-            else
-              await _dj.playDeckA();
-          },
-          onCue: () async => await _dj.deckA.seek(Duration.zero),
-          onLoopSelected: (beats) async {
-            final enabled = !(state.loopEnabled && state.loopBeats == beats);
-            await _dj.enableLoopDeckA(
-              enabled: enabled,
-              beats: beats,
-              bpm: state.bpm,
+        final s = snapshot.data!;
+        // manage spinner speed & animation
+        final bpm = s.bpm > 0 ? s.bpm : 120.0;
+        final period = (60.0 / bpm).clamp(0.25, 6.0);
+        if (s.isPlaying) {
+          if (!_spinControllerA.isAnimating) {
+            _spinControllerA.duration = Duration(
+              milliseconds: (period * 1000).round(),
             );
-          },
+            _spinControllerA.repeat();
+          }
+        } else {
+          if (_spinControllerA.isAnimating) {
+            _spinControllerA.stop();
+          }
+        }
+        return _deckControl(
+          s,
+          _dj,
+          controller: _spinControllerA,
+          deckIndex: 0,
+          platterSize: platterSize,
+          onPick: _pickForDeckA,
         );
       },
     );
   }
 
-  Widget _buildDeckB() {
+  Widget _buildDeckB(BoxConstraints constraints) {
+    final platterSize = (constraints.maxWidth / 4).clamp(140.0, 260.0);
     return StreamBuilder<DeckState>(
       stream: _dj.deckBState,
       initialData: DeckState(
@@ -565,33 +428,256 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
         isPlaying: false,
       ),
       builder: (context, snapshot) {
-        final state = snapshot.data!;
-        final fileName = state.filePath != null
-            ? state.filePath!.split(Platform.pathSeparator).last
-            : 'No File';
-        return _DeckPlatter(
-          label: 'B',
-          fileName: fileName,
-          bpm: state.bpm,
-          isPlaying: state.isPlaying,
-          onPick: _pickForDeckB,
-          onPlayPause: () async {
-            if (state.isPlaying)
-              await _dj.pauseDeckB();
-            else
-              await _dj.playDeckB();
-          },
-          onCue: () async => await _dj.deckB.seek(Duration.zero),
-          onLoopSelected: (beats) async {
-            final enabled = !(state.loopEnabled && state.loopBeats == beats);
-            await _dj.enableLoopDeckB(
-              enabled: enabled,
-              beats: beats,
-              bpm: state.bpm,
+        final s = snapshot.data!;
+        final bpm = s.bpm > 0 ? s.bpm : 120.0;
+        final period = (60.0 / bpm).clamp(0.25, 6.0);
+        if (s.isPlaying) {
+          if (!_spinControllerB.isAnimating) {
+            _spinControllerB.duration = Duration(
+              milliseconds: (period * 1000).round(),
             );
-          },
+            _spinControllerB.repeat();
+          }
+        } else {
+          if (_spinControllerB.isAnimating) {
+            _spinControllerB.stop();
+          }
+        }
+        return _deckControl(
+          s,
+          _dj,
+          controller: _spinControllerB,
+          deckIndex: 1,
+          platterSize: platterSize,
+          onPick: _pickForDeckB,
         );
       },
+    );
+  }
+
+  Widget _deckControl(
+    DeckState state,
+    DJService dj, {
+    required AnimationController controller,
+    required int deckIndex,
+    required double platterSize,
+    required VoidCallback onPick,
+  }) {
+    // deckIndex: 0 = A, 1 = B
+    final isPlaying = state.isPlaying;
+    final fileName = state.filePath?.split(Platform.pathSeparator).last ?? 'No file';
+    final bpm = state.bpm;
+    final loopEnabled = state.loopEnabled;
+    final loopBeats = state.loopBeats;
+    final displayLabel = deckIndex == 0 ? 'Track 1' : 'Track 2';
+    final audioPlayer = deckIndex == 0 ? dj.deckA : dj.deckB;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E2E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(displayLabel, style: const TextStyle(color: Colors.white70)),
+          const SizedBox(height: 12),
+          Text(
+            fileName,
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          // show animated platter + waveform
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                RotationTransition(
+                  turns: controller,
+                  child: Container(
+                    width: platterSize,
+                    height: platterSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF0F0F14),
+                      border: Border.all(
+                        color: isPlaying
+                            ? const Color(0xFF8B5CF6)
+                            : Colors.white12,
+                        width: isPlaying ? 3 : 1,
+                      ),
+                      boxShadow: isPlaying
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF8B5CF6).withOpacity(0.08),
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${bpm.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 36,
+                  child: AudioWaveformWidget(
+                    audioPlayer: audioPlayer,
+                    barCount: 48,
+                    height: 36,
+                    color: const Color(0xFF8B5CF6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.folder_open, color: Colors.white70),
+                onPressed: onPick,
+              ),
+              const SizedBox(width: 4),
+              ElevatedButton(
+                onPressed: () async {
+                  if (isPlaying) {
+                    if (deckIndex == 0) {
+                      await dj.pauseDeckA();
+                    } else {
+                      await dj.pauseDeckB();
+                    }
+                  } else {
+                    if (deckIndex == 0) {
+                      await dj.playDeckA();
+                    } else {
+                      await dj.playDeckB();
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  shape: const StadiumBorder(),
+                  backgroundColor: const Color(0xFF8B5CF6),
+                ),
+                child: Icon(
+                  isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.flag, color: Colors.white70),
+                onPressed: () async {
+                  if (deckIndex == 0) {
+                    await dj.deckA.seek(Duration.zero);
+                  } else {
+                    await dj.deckB.seek(Duration.zero);
+                  }
+                },
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.white38),
+                tooltip: 'Edit BPM',
+                onPressed: () async {
+                  final controller = TextEditingController(
+                    text: bpm.toStringAsFixed(0),
+                  );
+                  final res = await showDialog<double?>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      backgroundColor: const Color(0xFF1E1E2E),
+                      title: const Text(
+                        'Set BPM',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      content: TextField(
+                        controller: controller,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(
+                            context,
+                            double.tryParse(controller.text),
+                          ),
+                          child: const Text('Set'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (res != null) {
+                    if (deckIndex == 0) {
+                      dj.setDeckABPM(res);
+                    } else {
+                      dj.setDeckBBPM(res);
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoopControlsWidget(
+    String title,
+    DeckState state,
+    Future<void> Function(int beats, bool enabled) onLoopSelected,
+  ) {
+    return Column(
+      children: [
+        Text(title, style: const TextStyle(color: Colors.white70)),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 4,
+          children: [1, 2, 4, 8]
+              .map(
+                (beats) => SizedBox(
+                  width: 40,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final enabled =
+                          !(state.loopEnabled && state.loopBeats == beats);
+                      await onLoopSelected(beats, enabled);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          state.loopEnabled && state.loopBeats == beats
+                              ? const Color(0xFF8B5CF6)
+                              : Colors.grey,
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(36, 36),
+                    ),
+                    child: Text(
+                      '$beats',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ],
     );
   }
 
@@ -759,91 +845,24 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Column(
-                children: [
-                  const Text(
-                    'Track 1',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  Wrap(
-                    spacing: 4,
-                    children: [1, 2, 4, 8]
-                        .map(
-                          (beats) => SizedBox(
-                            width: 40,
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                final enabled =
-                                    !(aState.loopEnabled &&
-                                        aState.loopBeats == beats);
-                                await _dj.enableLoopDeckA(
-                                  enabled: enabled,
-                                  beats: beats,
-                                  bpm: aState.bpm,
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    aState.loopEnabled &&
-                                        aState.loopBeats == beats
-                                    ? const Color(0xFF8B5CF6)
-                                    : Colors.grey,
-                                padding: EdgeInsets.zero,
-                                minimumSize: const Size(36, 36),
-                              ),
-                              child: Text(
-                                '$beats',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
+              _buildLoopControlsWidget(
+                'Track 1',
+                aState,
+                (beats, enabled) => _dj.enableLoopDeckA(
+                  enabled: enabled,
+                  beats: beats,
+                  bpm: aState.bpm,
+                ),
               ),
-              Column(
-                children: [
-                  const Text(
-                    'Track 2',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  Wrap(
-                    spacing: 4,
-                    children: [1, 2, 4, 8]
-                        .map(
-                          (beats) => SizedBox(
-                            width: 40,
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                final enabled =
-                                    !(bState.loopEnabled &&
-                                        bState.loopBeats == beats);
-                                await _dj.enableLoopDeckB(
-                                  enabled: enabled,
-                                  beats: beats,
-                                  bpm: bState.bpm,
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    bState.loopEnabled &&
-                                        bState.loopBeats == beats
-                                    ? const Color(0xFF8B5CF6)
-                                    : Colors.grey,
-                                padding: EdgeInsets.zero,
-                                minimumSize: const Size(36, 36),
-                              ),
-                              child: Text(
-                                '$beats',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
+              const SizedBox(width: 16),
+              _buildLoopControlsWidget(
+                'Track 2',
+                bState,
+                (beats, enabled) => _dj.enableLoopDeckB(
+                  enabled: enabled,
+                  beats: beats,
+                  bpm: bState.bpm,
+                ),
               ),
             ],
           ),
@@ -970,24 +989,6 @@ class _DJRemixScreenState extends State<DJRemixScreen> {
           ],
         ),
         const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              onPressed: (aPath != null && bPath != null)
-                  ? () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => DJControlsScreen(dj: _dj),
-                        ),
-                      );
-                    }
-                  : null,
-              child: const Text('Open Mixer'),
-            ),
-          ],
-        ),
       ],
     );
   }
