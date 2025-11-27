@@ -33,24 +33,28 @@ class _AudioWaveformWidgetState extends State<AudioWaveformWidget>
   @override
   void initState() {
     super.initState();
-    
+
     // Initialize bar heights
-    for (int i = 0; i < widget.barCount; i++) {
+    final initialCount = widget.barCount > 0 ? widget.barCount : 1;
+    for (int i = 0; i < initialCount; i++) {
       _barHeights.add(_random.nextDouble() * 0.5 + 0.2);
     }
 
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
-    )..addListener(() {
-        if (mounted) {
-          setState(() {
-            // Update random bars for animation effect
-            final barToUpdate = _random.nextInt(widget.barCount);
-            _barHeights[barToUpdate] = _random.nextDouble() * 0.8 + 0.2;
-          });
-        }
+    );
+
+    _animationController.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        // Update random bars for animation effect
+        final available = _barHeights.length;
+        if (available <= 0) return;
+        final barToUpdate = _random.nextInt(available);
+        _barHeights[barToUpdate] = _random.nextDouble() * 0.8 + 0.2;
       });
+    });
 
     // Listen to player state and keep a subscription so we can cancel it
     _playerStateSub = widget.audioPlayer.playerStateStream.listen((state) {
@@ -85,23 +89,38 @@ class _AudioWaveformWidgetState extends State<AudioWaveformWidget>
   }
 
   @override
+  void didUpdateWidget(covariant AudioWaveformWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Ensure our internal buffer matches the requested bar count
+    final newCount = widget.barCount > 0 ? widget.barCount : 1;
+    if (newCount > _barHeights.length) {
+      final toAdd = newCount - _barHeights.length;
+      for (int i = 0; i < toAdd; i++) {
+        _barHeights.add(_random.nextDouble() * 0.5 + 0.2);
+      }
+    } else if (newCount < _barHeights.length) {
+      _barHeights.removeRange(newCount, _barHeights.length);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<PlayerState>(
       stream: widget.audioPlayer.playerStateStream,
       builder: (context, snapshot) {
         final isPlaying = snapshot.data?.playing ?? false;
-        
+
         return Container(
           height: widget.height,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             crossAxisAlignment: CrossAxisAlignment.center,
-            children: List.generate(widget.barCount, (index) {
-              final barHeight = isPlaying 
+            children: List.generate(_barHeights.length, (index) {
+              final barHeight = isPlaying
                   ? _barHeights[index] * widget.height
                   : widget.height * 0.2;
-              
+
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 curve: Curves.easeInOut,

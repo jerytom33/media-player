@@ -13,6 +13,8 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        // Add FFmpegKit download repository to resolve ffmpeg-kit artifacts
+        maven { url = uri("https://download.ffmpegkit.com/maven") }
         gradlePluginPortal()
     }
 }

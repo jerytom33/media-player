@@ -31,6 +31,72 @@
 
   <title>mp3_player</title>
   <link rel="manifest" href="manifest.json">
+  <!-- 21st.dev Toolbar (development only). Loads from CDN and initializes when served from localhost. -->
+  <script>
+    (function() {
+      try {
+        const hostname = window?.location?.hostname || '';
+        const isDevHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+        if (!isDevHost) return;
+
+        // Load the toolbar script dynamically from CDN so it is not shipped with production builds
+        const s = document.createElement('script');
+        s.crossOrigin = 'anonymous';
+        s.src = 'https://unpkg.com/@21st-extension/toolbar@latest/dist/toolbar.min.js';
+        s.onload = function() {
+          // Initialize the toolbar only if the library is present.
+          const initFn = window.initToolbar || (window.TwentyFirstToolbar && window.TwentyFirstToolbar.init);
+          if (typeof initFn === 'function') {
+            try {
+              initFn({
+                plugins: [], // Add known plugins as needed
+              });
+            } catch (e) {
+              // ignore init errors in dev
+              console.warn('21st Toolbar initialization failed', e);
+            }
+          }
+          // Expose a helper that Flutter web can use to register DJ controls for the toolbar.
+          // The function accepts either a JSON string or a JS object.
+          window.registerDJControls = function(controls) {
+            try {
+              if (!controls) return;
+              window.djControls = controls;
+              // If the toolbar has plugin API, notify it (best effort).
+              if (window.TwentyFirstToolbar && typeof window.TwentyFirstToolbar.registerPlugin === 'function') {
+                try {
+                  window.TwentyFirstToolbar.registerPlugin('dj', {
+                    name: 'DJ Mixer',
+                    icon: 'headset',
+                    controls: controls,
+                    onAction: function(action) {
+                      // Forward actions to the host (Flutter).
+                      window.postMessage({ target: 'flutter', action: action }, '*');
+                    }
+                  });
+                } catch (err) { console.warn('registerPlugin: ' + err); }
+              }
+            } catch (err) { console.warn('registerDJControls: ' + err); }
+          };
+
+          // Handler callable from Flutter which forwards messages to the toolbar or logs them.
+          window.onFlutterMessage = function(message) {
+            try {
+              if (message && window.TwentyFirstToolbar && typeof window.TwentyFirstToolbar.onFlutterMessage === 'function') {
+                window.TwentyFirstToolbar.onFlutterMessage(message);
+              } else {
+                console.info('onFlutterMessage: ', message);
+              }
+            } catch (e) { console.warn('onFlutterMessage failed', e); }
+          };
+        };
+        s.onerror = function(e) { console.warn('Failed to load 21st.dev toolbar', e); };
+        document.head.appendChild(s);
+      } catch (e) {
+        console.warn('21st Toolbar loader encountered an error', e);
+      }
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

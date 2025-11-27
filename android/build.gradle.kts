@@ -3,6 +3,8 @@ allprojects {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        // FFmpegKit Maven repository for ffmpeg-kit artifacts
+        maven { url = uri("https://download.ffmpegkit.com/maven") }
         // Removed ffmpeg-kit Maven repository that requires GitHub Packages credentials.
         // If you need offline FFmpeg processing, re-add the repository & credentials or use an alternate distribution.
     }

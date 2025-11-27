@@ -57,5 +57,27 @@ The app scans the following directories for media files:
 - Sort options (by name, date, size, type)
 - Favorites/recently played tracking
 
+## DJ Remix (experimental)
+- Dual audio deck UI (Deck A & Deck B)
+- Load and play two tracks simultaneously
+- Crossfader to mix between decks
+- Basic beat sync: adjust deck B speed to match deck A BPM
+- Looping (1/2/4/8 beats)
+- Per-deck waveform visualization
+- Per-deck EQ toggles (Android only; currently one session at a time)
+- Recording: session capture saved as JSON (microphone/internal mix capture not yet implemented)
+ - Export Mix (WAV-only): a simple offline WAV mixing fallback is available. For general-purpose export (all audio formats), enable FFmpeg support by adding the FFmpegKit plugin or following the instructions below.
+
+Note: This is an MVP implementation. Advanced DJ features like internal card audio capture for mix recording, advanced FX chains, automatic beat detection and BPM analysis, and cross-platform audio effects are future enhancements.
+
+How to enable full FFmpeg export (optional - needs network & third-party dependencies):
+
+1. Add a maintained FFmpegKit plugin (e.g., `ffmpeg_kit_flutter_min_gpl`) to `pubspec.yaml`.
+2. Ensure the Android project includes the FFmpegKit maven repository in `android/build.gradle.kts` and `android/settings.gradle.kts`:
+	- `maven { url = uri("https://download.ffmpegkit.com/maven") }`
+3. If your environment fails to resolve plugin artifacts (network access or credential issues), you may need to vendor the FFmpegKit AARs locally or follow FFmpegKit distribution instructions.
+
+Note: This project includes a temporary script `scripts/patch_ffmpeg_kit_min_gpl.ps1` to help patch plugin gradle files for local testing; this change should only be used for local development and not committed to production dependencies.
+
 ## License
 You can adapt and extend freely for personal or commercial use.

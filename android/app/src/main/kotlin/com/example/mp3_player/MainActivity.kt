@@ -11,38 +11,40 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 	private val channelName = "com.example.mp3_player/equalizer"
-	private var equalizer: Equalizer? = null
-	private var bassBoost: BassBoost? = null
-	private var virtualizer: Virtualizer? = null
-	private var sessionId: Int = 0
+	private val sessionEffects = mutableMapOf<Int, Triple<Equalizer?, BassBoost?, Virtualizer?>>()
+	private var currentSessionId: Int? = null
 
 	override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
 		MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
 			when (call.method) {
 				"setAudioSessionId" -> {
-					val sid = (call.argument<Int>("sessionId") ?: 0)
+					val sid = call.argument<Int>("sessionId") ?: 0
 					setAudioSessionId(sid)
 					result.success(null)
 				}
 				"setBands" -> {
 					val gains = call.argument<List<Double>>("gains") ?: listOf()
-					setBands(gains)
+					val sid = call.argument<Int>("sessionId")
+					setBands(gains, sid)
 					result.success(null)
 				}
 				"setEnabled" -> {
 					val enabled = call.argument<Boolean>("enabled") ?: false
-					setEnabled(enabled)
+					val sid = call.argument<Int>("sessionId")
+					setEnabled(enabled, sid)
 					result.success(null)
 				}
 				"setBassBoost" -> {
 					val strength = call.argument<Double>("strength") ?: 0.0
-					setBassBoost(strength)
+					val sid = call.argument<Int>("sessionId")
+					setBassBoost(strength, sid)
 					result.success(null)
 				}
 				"setVirtualizer" -> {
 					val strength = call.argument<Double>("strength") ?: 0.0
-					setVirtualizer(strength)
+					val sid = call.argument<Int>("sessionId")
+					setVirtualizer(strength, sid)
 					result.success(null)
 				}
 				else -> result.notImplemented()
@@ -51,20 +53,28 @@ class MainActivity : FlutterActivity() {
 	}
 
 	private fun setAudioSessionId(sid: Int) {
-		sessionId = sid
-		releaseEffects()
-		if (sessionId >= 0) {
-			equalizer = Equalizer(0, sessionId.toInt())
-			equalizer?.enabled = true
-			bassBoost = BassBoost(0, sessionId.toInt())
-			bassBoost?.enabled = true
-			virtualizer = Virtualizer(0, sessionId.toInt())
-			virtualizer?.enabled = true
+		if (sid <= 0) {
+			currentSessionId = null
+			return
+		}
+		currentSessionId = sid
+		// Create effect instances for the session if not present
+		if (!sessionEffects.containsKey(sid)) {
+			val eq = Equalizer(0, sid)
+			eq.enabled = true
+			val bb = BassBoost(0, sid)
+			bb.enabled = true
+			val v = Virtualizer(0, sid)
+			v.enabled = true
+			sessionEffects[sid] = Triple(eq, bb, v)
 		}
 	}
 
-	private fun setBands(gains: List<Double>) {
-		equalizer?.let { eq ->
+	private fun setBands(gains: List<Double>, sid: Int?) {
+		val targetSid = sid ?: currentSessionId
+		val triple = targetSid?.let { sessionEffects[it] }
+		val eq = triple?.first
+		eq?.let { eq ->
 			val bandCount = eq.numberOfBands.toInt()
 			val range = eq.bandLevelRange
 			val min = range[0].toInt()
@@ -96,14 +106,27 @@ class MainActivity : FlutterActivity() {
 		}
 	}
 
-	private fun setEnabled(enabled: Boolean) {
-		equalizer?.enabled = enabled
-		bassBoost?.enabled = enabled
-		virtualizer?.enabled = enabled
+	private fun setEnabled(enabled: Boolean, sid: Int?) {
+		if (sid != null) {
+			sessionEffects[sid]?.let { (eq, bb, v) ->
+				eq?.enabled = enabled
+				bb?.enabled = enabled
+				v?.enabled = enabled
+			}
+		} else {
+			sessionEffects.values.forEach { (eq, bb, v) ->
+				eq?.enabled = enabled
+				bb?.enabled = enabled
+				v?.enabled = enabled
+			}
+		}
 	}
 
-	private fun setBassBoost(strength: Double) {
-		bassBoost?.let { bb ->
+	private fun setBassBoost(strength: Double, sid: Int?) {
+		val target = sid ?: currentSessionId
+		val triple = target?.let { sessionEffects[it] }
+		val bb = triple?.second
+		bb?.let { bb ->
 			val s = (strength * 1000).toInt().coerceIn(0, 1000)
 			try {
 				try {
@@ -117,8 +140,11 @@ class MainActivity : FlutterActivity() {
 		}
 	}
 
-	private fun setVirtualizer(strength: Double) {
-		virtualizer?.let { v ->
+	private fun setVirtualizer(strength: Double, sid: Int?) {
+		val target = sid ?: currentSessionId
+		val triple = target?.let { sessionEffects[it] }
+		val v = triple?.third
+		v?.let { v ->
 			val s = (strength * 1000).toInt().coerceIn(0, 1000)
 			try {
 				try {
@@ -132,19 +158,23 @@ class MainActivity : FlutterActivity() {
 		}
 	}
 
-	private fun releaseEffects() {
-		try {
-			equalizer?.release()
-		} catch (_: Exception) {}
-		equalizer = null
-		try {
-			bassBoost?.release()
-		} catch (_: Exception) {}
-		bassBoost = null
-		try {
-			virtualizer?.release()
-		} catch (_: Exception) {}
-		virtualizer = null
+	private fun releaseEffects(sessionId: Int? = null) {
+		if (sessionId != null) {
+			sessionEffects[sessionId]?.let { (eq, bb, v) ->
+				try { eq?.release() } catch (_: Exception) {}
+				try { bb?.release() } catch (_: Exception) {}
+				try { v?.release() } catch (_: Exception) {}
+			}
+			sessionEffects.remove(sessionId)
+		} else {
+			// release all
+			sessionEffects.values.forEach { (eq, bb, v) ->
+				try { eq?.release() } catch (_: Exception) {}
+				try { bb?.release() } catch (_: Exception) {}
+				try { v?.release() } catch (_: Exception) {}
+			}
+			sessionEffects.clear()
+		}
 	}
 
 	override fun onDestroy() {

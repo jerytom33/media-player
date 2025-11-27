@@ -15,6 +15,7 @@ import 'audio_edit_screen.dart';
 import '../services/user_profile_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'equalizer_screen.dart';
+import 'dj_remix_screen.dart';
 
 class MediaHomePage extends StatefulWidget {
   const MediaHomePage({super.key});
@@ -1098,6 +1099,15 @@ class _MediaHomePageState extends State<MediaHomePage> {
                         });
                       },
                     ),
+                    // DJ Remix
+                    ListTile(
+                      leading: const Icon(Icons.headset, color: Color(0xFF8B5CF6)),
+                      title: const Text('DJ Remix', style: TextStyle(color: Colors.white)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const DJRemixScreen()));
+                      },
+                    ),
                     ListTile(
                       leading: const Icon(Icons.settings, color: Colors.white70),
                       title: const Text('Settings', style: TextStyle(color: Colors.white)),
@@ -1181,6 +1191,16 @@ class _MediaHomePageState extends State<MediaHomePage> {
         ),
       ),
       bottomSheet: _buildMiniPlayer(),
+      // DJ Remix FAB
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const DJRemixScreen()));
+        },
+        backgroundColor: const Color(0xFF8B5CF6),
+        child: const Icon(Icons.headset),
+        tooltip: 'DJ Remix',
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -1214,17 +1234,26 @@ class _MediaHomePageState extends State<MediaHomePage> {
               },
             )
           else
-            // Home: show title only (no left menu)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Home: show menu button and title
+            Row(
               children: [
-                Text(
-                  _showList ? 'Home' : 'Now Playing',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.white, size: 24),
+                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _showList ? 'Home' : 'Now Playing',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

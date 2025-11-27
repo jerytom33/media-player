@@ -11,22 +11,23 @@ class RuntimeEqualizerService {
     await _channel.invokeMethod('setAudioSessionId', {'sessionId': sessionId});
   }
 
-  Future<void> setEnabled(bool enabled) async {
-    await _channel.invokeMethod('setEnabled', {'enabled': enabled});
+  Future<void> setEnabled(bool enabled, {int? sessionId}) async {
+    await _channel.invokeMethod('setEnabled', {'enabled': enabled, 'sessionId': sessionId});
   }
 
-  Future<void> setBands(List<double> gains, int bandCount) async {
+  Future<void> setBands(List<double> gains, int bandCount, {int? sessionId}) async {
     await _channel.invokeMethod('setBands', {
       'gains': gains,
       'bandCount': bandCount,
+      'sessionId': sessionId,
     });
   }
 
-  Future<void> setBassBoost(double strength) async {
-    await _channel.invokeMethod('setBassBoost', {'strength': strength});
+  Future<void> setBassBoost(double strength, {int? sessionId}) async {
+    await _channel.invokeMethod('setBassBoost', {'strength': strength, 'sessionId': sessionId});
   }
 
-  Future<void> setVirtualizer(double strength) async {
-    await _channel.invokeMethod('setVirtualizer', {'strength': strength});
+  Future<void> setVirtualizer(double strength, {int? sessionId}) async {
+    await _channel.invokeMethod('setVirtualizer', {'strength': strength, 'sessionId': sessionId});
   }
 }

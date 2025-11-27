@@ -12,6 +12,8 @@
     <!-- Background audio permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Microphone needed for recording local DJ mixes (microphone capture only) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
     <application
         android:label="mp3_player"
