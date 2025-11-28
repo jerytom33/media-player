@@ -1,21 +1,5 @@
 import 'dart:html' as html;
-import 'dart:convert';
 import 'dart:js' as js;
-
-void registerDJControls(Map<String, dynamic> data) {
-  try {
-    // Pass JS object to window.registerDJControls or fallback to storing in a global variable
-    final jsObj = js.JsObject.jsify(data);
-    if (js.context.hasProperty('registerDJControls')) {
-      js.context.callMethod('registerDJControls', [jsObj]);
-    } else {
-      html.window.localStorage['djControls'] = jsonEncode(data);
-    }
-  } catch (e) {
-    // ignore
-    print('registerDJControls failed: $e');
-  }
-}
 
 void addToolbarMessageListener(void Function(Map<String, dynamic>) callback) {
   try {

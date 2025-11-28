@@ -43,7 +43,7 @@ class AudioProcessingService {
       // We chain a light echo (mono) to both channels with short delays
       final delays = '60|120';
       final decays = '${(0.2 * strength).toStringAsFixed(3)}|${(0.15 * strength).toStringAsFixed(3)}';
-      filters.add('aecho=0.8:0.9:${delays}:${decays}');
+      filters.add('aecho=0.8:0.9:$delays:$decays');
     }
 
     final filterGraph = filters.join(',');

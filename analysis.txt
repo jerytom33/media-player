@@ -1,0 +1,6 @@
+﻿Analyzing test_echo.dart...                                     
+
+  error - The method 'play' isn't defined for the type 'FlutterEcho' - lib\test_echo.dart:16:8 - undefined_method
+  error - The method 'stop' isn't defined for the type 'FlutterEcho' - lib\test_echo.dart:17:8 - undefined_method
+  error - The method 'echo' isn't defined for the type 'FlutterEcho' - lib\test_echo.dart:18:8 - undefined_method
+

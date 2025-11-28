@@ -18,7 +18,6 @@ class MediaPlayerApp extends StatelessWidget {
           secondary: const Color(0xFFEC4899), // Hot pink
           tertiary: const Color(0xFF14B8A6), // Teal
           surface: const Color(0xFF1E1E2E),
-          background: const Color(0xFF0F0F1E),
           error: const Color(0xFFEF4444),
         ),
         appBarTheme: const AppBarTheme(
