@@ -133,6 +133,35 @@ class AudioMixerEngine {
     _deckBPlayer.setVolume(volumeB);
   }
 
+  // --- Simple per-deck effect state (UI-level virtualization only) ---
+  // These are placeholders for effect levels. Real audio DSP is out of
+  // scope for this change — these values can be used by a native plugin
+  // or a DSP pipeline later.
+  final Map<String, double> _deckAEffects = {};
+  final Map<String, double> _deckBEffects = {};
+
+  /// Set an effect level for a deck.
+  /// `deck` should be either 'A' or 'B'. `effect` is an identifier like
+  /// 'echo', 'reverb', etc. `level` is clamped between 0.0 and 1.0.
+  void setDeckEffect(String deck, String effect, double level) {
+    final clamped = level.clamp(0.0, 1.0);
+    if (deck == 'A') {
+      _deckAEffects[effect] = clamped;
+    } else {
+      _deckBEffects[effect] = clamped;
+    }
+    // NOTE: No DSP applied here. This method stores the level and can be
+    // observed by higher-level services to update UI or to forward to a
+    // real audio processing pipeline in the future.
+    print('setDeckEffect: deck=$deck effect=$effect level=$clamped');
+  }
+
+  /// Get current effect level for a deck/effect (0.0 if unset).
+  double getDeckEffect(String deck, String effect) {
+    if (deck == 'A') return _deckAEffects[effect] ?? 0.0;
+    return _deckBEffects[effect] ?? 0.0;
+  }
+
   /// Set playback speed for Deck A (for BPM matching)
   Future<void> setDeckASpeed(double speed) async {
     await _deckAPlayer.setSpeed(speed.clamp(0.5, 2.0));

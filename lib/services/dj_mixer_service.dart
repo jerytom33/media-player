@@ -54,10 +54,15 @@ class DJMixerService {
   final _deckAController = StreamController<DeckState>.broadcast();
   final _deckBController = StreamController<DeckState>.broadcast();
   final _crossfaderController = StreamController<double>.broadcast();
+  // Effect maps streamers (broadcast current effect levels per deck)
+  final _deckAEffectsController = StreamController<Map<String, double>>.broadcast();
+  final _deckBEffectsController = StreamController<Map<String, double>>.broadcast();
 
   Stream<DeckState> get deckAState => _deckAController.stream;
   Stream<DeckState> get deckBState => _deckBController.stream;
   Stream<double> get crossfaderStream => _crossfaderController.stream;
+  Stream<Map<String, double>> get deckAEffectsStream => _deckAEffectsController.stream;
+  Stream<Map<String, double>> get deckBEffectsStream => _deckBEffectsController.stream;
 
   // Current state
   DeckState _deckAState = const DeckState();
@@ -268,6 +273,34 @@ class DJMixerService {
     _crossfader = value.clamp(0.0, 1.0);
     _engine.setCrossfader(_crossfader);
     _crossfaderController.add(_crossfader);
+  }
+
+  // ===== Effects =====
+
+  /// Set an effect level for a specific deck ('A' or 'B'). Level is 0.0..1.0
+  void setDeckEffectLevel({required String deck, required String effect, required double level}) {
+    final normalized = level.clamp(0.0, 1.0);
+    _engine.setDeckEffect(deck, effect, normalized);
+
+    // Broadcast the current effect maps so UI can update
+    final a = <String, double>{};
+    final b = <String, double>{};
+    // gather values for a small set of known effects by asking engine
+    // Note: asking engine for each effect is cheap; this keeps UI and engine in sync.
+    for (final fx in ['echo', 'reverb', 'delay', 'wet']) {
+      final va = _engine.getDeckEffect('A', fx);
+      final vb = _engine.getDeckEffect('B', fx);
+      if (va > 0.0) a[fx] = va;
+      if (vb > 0.0) b[fx] = vb;
+    }
+
+    _deckAEffectsController.add(a);
+    _deckBEffectsController.add(b);
+  }
+
+  /// Get the current effect level
+  double getDeckEffectLevel(String deck, String effect) {
+    return _engine.getDeckEffect(deck, effect);
   }
 
   double get crossfader => _crossfader;

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/dj_mixer_service.dart';
+import '../widgets/vertical_mixer_slider.dart';
 
 class DJMixerScreen extends StatefulWidget {
   const DJMixerScreen({super.key});
@@ -487,6 +488,61 @@ class _DJMixerScreenState extends State<DJMixerScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          // Deck selector for effect sliders
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: () => setState(() => _selectedDeck = 'A'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _selectedDeck == 'A' ? const Color(0xFF8B5CF6) : Colors.white10,
+                ),
+                child: const Text('Deck A'),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => setState(() => _selectedDeck = 'B'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _selectedDeck == 'B' ? const Color(0xFF06B6D4) : Colors.white10,
+                ),
+                child: const Text('Deck B'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Active effect sliders (vertical) for selected deck
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _activeEffects.map((effect) {
+                final currentMap = _selectedDeck == 'A' ? _effectLevelsA : _effectLevelsB;
+                final val = currentMap[effect] ?? 50.0;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: SizedBox(
+                    width: 80,
+                    height: 180,
+                    child: VerticalMixerSlider(
+                      label: effect,
+                      initialValue: val,
+                      min: 0,
+                      max: 100,
+                      onChanged: (v) {
+                        setState(() {
+                          currentMap[effect] = v;
+                        });
+                        // Apply to service (convert 0-100 -> 0.0-1.0)
+                        final normalized = (v / 100.0).clamp(0.0, 1.0);
+                        _djService.setDeckEffectLevel(deck: _selectedDeck, effect: effect.toLowerCase(), level: normalized);
+                      },
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         ],
       ),
     );
@@ -519,6 +575,10 @@ class _DJMixerScreenState extends State<DJMixerScreen> {
 
   // Track active effects
   final Set<String> _activeEffects = {};
+  // Per-effect levels (0-100) per deck
+  final Map<String, double> _effectLevelsA = {};
+  final Map<String, double> _effectLevelsB = {};
+  String _selectedDeck = 'A';
 
   Widget _buildEffectButton(String label, String tooltip) {
     final isActive = _activeEffects.contains(tooltip);
@@ -532,6 +592,9 @@ class _DJMixerScreenState extends State<DJMixerScreen> {
               _activeEffects.remove(tooltip);
             } else {
               _activeEffects.add(tooltip);
+              // initialize default level for the selected deck if missing
+              if (!_effectLevelsA.containsKey(tooltip)) _effectLevelsA[tooltip] = 50.0;
+              if (!_effectLevelsB.containsKey(tooltip)) _effectLevelsB[tooltip] = 50.0;
             }
           });
 
